@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>HYDRA Module</title>
+</head>
+<body style="color: white; background-color: black;">
+<script>
+function print_str(str) {
+	document.getElementById("output").innerHTML += str + "<br />";
+}
+function print_hex(name, buffer) {
+	let str = name + ": ";
+	for (let i = 0; i < buffer.length; ++i)
+		str += buffer[i].toString(16).padStart(2, '0').toUpperCase();
+	print_str(str);
+}
+function print_ms(name, start, end) {
+	print_str(name + ": " + (end - start).toFixed(2) + " ms");
+}
+WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
+	.then(obj => {
+		const wasm = obj.instance.exports;
+		buffer = wasm.memory.buffer;
+		//console.log(wasm);
+		let message = new Uint8Array(buffer, wasm.message, 42);
+		for (let i = 0; i < message.length; ++i)
+			message[i] = Math.trunc(Math.random() * 256);
+		print_hex("Message", message);
+		let start = performance.now();
+		wasm.digest_message(message.length, 16);
+		end = performance.now();
+		print_ms("digest_message", start, end);
+		let digest = new Uint8Array(buffer, wasm.digest, 16);
+		print_hex("Digest", digest);
+	});
+</script>
+<p>
+<h1>Hash-Yoked Dispersed Regeneration Algorithm</h1>
+WebAssembly HYDRA module for self-healing erasure coding<br />
+Copyright 2026 Ahmet Inan &lt;xdsopl@gmail.com&gt;<br />
+</p>
+<p id="output"></p>
+</body>
+</html>

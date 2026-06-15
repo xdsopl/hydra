@@ -9,7 +9,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define MLEN_MAX (1 << 24)
 
 __attribute__((visibility("default")))
-unsigned char digest[64];
+unsigned char digest[32];
 __attribute__((visibility("default")))
 unsigned char message[MLEN_MAX];
 
@@ -18,12 +18,12 @@ int digest_message(int mlen, int dlen)
 {
 	if (mlen < 0 || mlen > MLEN_MAX)
 		return 1;
-	if (dlen < 1 || dlen > 64)
+	if (dlen < 1 || dlen > 32)
 		return 1;
-	blake2b_state state;
-	blake2b_init(&state, dlen);
-	blake2b_update(&state, message, mlen);
-	blake2b_final(&state, digest, dlen);
+	blake2s_state state;
+	blake2s_init(&state, dlen);
+	blake2s_update(&state, message, mlen);
+	blake2s_final(&state, digest, dlen);
 	return 0;
 }
 

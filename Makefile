@@ -16,10 +16,10 @@ assets/hydra.wasm.gz: assets/hydra.wasm
 webserver:
 	go run tools/webserver.go
 
-assets/hydra.wasm: temp/string.o temp/blake2b-ref.o temp/hydra.o
+assets/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-temp/blake2b-ref.o: blake2_ref/blake2b-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
+temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
 	$(CC) $(CFLAGS) $(BLAKE2) -c -o $@ $<
 
 temp/hydra.o: module/hydra.c quirks/string.h blake2_ref/blake2.h

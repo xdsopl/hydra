@@ -33,6 +33,14 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		print_ms("digest_message", start, end);
 		let digest = new Uint8Array(buffer, wasm.digest, 16);
 		print_hex("Digest", digest);
+		let blocks = new Uint8Array(buffer, wasm.blocks, 1 << 20);
+		for (let i = 0; i < blocks.length; ++i)
+			blocks[i] = Math.trunc(Math.random() * 256);
+		start = performance.now();
+		let ret = wasm.digest_blocks(8, 1024);
+		print_str("ret = " + ret);
+		end = performance.now();
+		print_ms("digest_blocks", start, end);
 	});
 </script>
 <p>

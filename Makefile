@@ -6,7 +6,7 @@ CC = clang
 CFLAGS = -ffreestanding -fvisibility=hidden --target=wasm32
 LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
 
-CFLAGS += -std=c89 -W -Wall -O2 -Iquirks
+CFLAGS += -std=c99 -W -Wall -O2 -Iquirks
 BLAKE2 = -Iblake2_ref
 
 assets/hydra.wasm.gz: assets/hydra.wasm

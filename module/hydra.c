@@ -5,13 +5,19 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 */
 
 #include "blake2.h"
+#include "string.h"
 
-#define MLEN_MAX (1 << 24)
+#define MLEN_MAX (1 << 20)
+#define HLEN_MAX (16 << 9)
 
 __attribute__((visibility("default")))
 unsigned char digest[32];
 __attribute__((visibility("default")))
 unsigned char message[MLEN_MAX];
+__attribute__((visibility("default")))
+unsigned char blocks[MLEN_MAX];
+__attribute__((visibility("default")))
+unsigned char hashes[HLEN_MAX];
 
 __attribute__((visibility("default")))
 int digest_message(int mlen, int dlen)
@@ -24,6 +30,25 @@ int digest_message(int mlen, int dlen)
 	blake2s_init(&state, dlen);
 	blake2s_update(&state, message, mlen);
 	blake2s_final(&state, digest, dlen);
+	return 0;
+}
+
+__attribute__((visibility("default")))
+int digest_blocks(int height, int blen)
+{
+	if (height < 2 || height > 8)
+		return 1;
+	int bcnt = 1 << height;
+	if (blen < 0 || blen * bcnt > MLEN_MAX)
+		return 1;
+	blake2s_state init, state;
+	unsigned char key = 0;
+	blake2s_init_key(&init, 16, &key, 1);
+	for (int i = 0; i < bcnt; i++) {
+		memcpy(&state, &init, sizeof(blake2s_state));
+		blake2s_update(&state, blocks+blen*i, blen);
+		blake2s_final(&state, hashes+16*i, 16);
+	}
 	return 0;
 }
 

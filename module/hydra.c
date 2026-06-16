@@ -5,6 +5,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 */
 
 #include "blake2.h"
+#include "string.h"
 
 #define DLEN_MAX 32
 #define MLEN_MAX (1 << 20)
@@ -98,5 +99,42 @@ int extract_proof(int height, int blen, int hlen, int index)
 	for (int i = 0; i < hlen; i++)
 		proof[i] = hashes[i];
 	return 0;
+}
+
+__attribute__((visibility("default")))
+int verify_proof(int height, int blen, int hlen, int index)
+{
+	if (height < 2 || height > HEIGHT_MAX)
+		return 1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return 1;
+	if (hlen < 1 || hlen > HLEN_MAX)
+		return 1;
+	int leaves = 1 << height;
+	if (index < 0 || index >= leaves)
+		return 1;
+	blake2s_state init, state;
+	unsigned char key = 0; // prevent second preimage attack
+	blake2s_init_key(&init, hlen, &key, 1);
+	state = init;
+	blake2s_update(&state, block, blen);
+	unsigned char hash[HLEN_MAX];
+	blake2s_final(&state, hash, hlen);
+	key = 1; // put internal nodes into a different domain
+	blake2s_init_key(&init, hlen, &key, 1);
+	for (int j = height; j > 0; j--) {
+		int sibling = index ^ 1;
+		index /= 2;
+		state = init;
+		if (sibling & 1) {
+			blake2s_update(&state, hash, hlen);
+			blake2s_update(&state, proof+hlen*j, hlen);
+		} else {
+			blake2s_update(&state, proof+hlen*j, hlen);
+			blake2s_update(&state, hash, hlen);
+		}
+		blake2s_final(&state, hash, hlen);
+	}
+	return !!memcmp(hash, proof, hlen);
 }
 

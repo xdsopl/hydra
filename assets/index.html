@@ -47,6 +47,8 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		for (let i = 0; i < 8; ++i) {
 			wasm.extract_proof(3, 1024, 16, i);
 			print_hex("Proof", proof);
+			ret = wasm.verify_proof(3, 1024, 16, i);
+			print_str("ret = " + ret);
 		}
 	});
 </script>

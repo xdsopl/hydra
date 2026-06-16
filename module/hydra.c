@@ -37,24 +37,27 @@ int digest_blocks(int height, int blen)
 {
 	if (height < 2 || height > 8)
 		return 1;
-	int count = 1 << height;
-	if (blen < 0 || blen * count > MLEN_MAX)
+	int leaves = 1 << height;
+	if (blen < 0 || blen * leaves > MLEN_MAX)
 		return 1;
 	blake2s_state init, state;
-	unsigned char key = 0;
+	unsigned char key = 0; // prevent second preimage attack
 	blake2s_init_key(&init, 16, &key, 1);
-	for (int i = 0; i < count; i++) {
+	int woff = leaves - 1;
+	for (int i = 0; i < leaves; i++) {
 		state = init;
 		blake2s_update(&state, blocks+blen*i, blen);
-		blake2s_final(&state, hashes+16*i, 16);
+		blake2s_final(&state, hashes+16*(woff+i), 16);
 	}
-	key = 1;
+	key = 1; // put internal nodes into a different domain
 	blake2s_init_key(&init, 16, &key, 1);
-	for (int prev = 0, offset = count; count > 1; prev = offset, offset += count /= 2) {
-		for (int i = 0; i < count / 2; i++) {
+	for (int nodes = leaves / 2; nodes; nodes /= 2) {
+		int roff = woff;
+		woff -= nodes;
+		for (int i = 0; i < nodes; i++) {
 			state = init;
-			blake2s_update(&state, hashes+prev+32*i, 32);
-			blake2s_final(&state, hashes+offset+16*i, 16);
+			blake2s_update(&state, hashes+16*(roff+2*i), 32);
+			blake2s_final(&state, hashes+16*(woff+i), 16);
 		}
 	}
 	return 0;

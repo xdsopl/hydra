@@ -41,6 +41,8 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		print_str("ret = " + ret);
 		end = performance.now();
 		print_ms("digest_blocks", start, end);
+		let root_hash = new Uint8Array(buffer, wasm.hashes, 16);
+		print_hex("Root hash", root_hash);
 	});
 </script>
 <p>

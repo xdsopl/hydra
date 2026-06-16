@@ -37,7 +37,7 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		for (let i = 0; i < blocks.length; ++i)
 			blocks[i] = Math.trunc(Math.random() * 256);
 		start = performance.now();
-		let ret = wasm.digest_blocks(8, 1024);
+		let ret = wasm.digest_blocks(8, 1024, 16);
 		print_str("ret = " + ret);
 		end = performance.now();
 		print_ms("digest_blocks", start, end);

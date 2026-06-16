@@ -123,16 +123,16 @@ int verify_proof(int height, int blen, int hlen, int index)
 	key = 1; // put internal nodes into a different domain
 	blake2s_init_key(&init, hlen, &key, 1);
 	for (int j = height; j > 0; j--) {
-		int sibling = index ^ 1;
-		index /= 2;
 		state = init;
-		if (sibling & 1) {
-			blake2s_update(&state, hash, hlen);
-			blake2s_update(&state, proof+hlen*j, hlen);
-		} else {
-			blake2s_update(&state, proof+hlen*j, hlen);
-			blake2s_update(&state, hash, hlen);
+		unsigned char *left = hash, *right = proof+hlen*j;
+		if (index & 1) {
+			unsigned char *tmp = left;
+			left = right;
+			right = tmp;
 		}
+		index /= 2;
+		blake2s_update(&state, left, hlen);
+		blake2s_update(&state, right, hlen);
 		blake2s_final(&state, hash, hlen);
 	}
 	return !!memcmp(hash, proof, hlen);

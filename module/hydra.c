@@ -14,7 +14,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define HEIGHT_MAX 8
 #define BCNT_MAX (1 << HEIGHT_MAX)
 
-// prevent second preimage attack
+/* prevent second preimage attack */
 static const unsigned char leaf_key = 0;
 static const unsigned char node_key = 1;
 

@@ -43,7 +43,7 @@ void *memmove(void *dst, const void *src, size_t len)
 	const unsigned char *s = src;
 	if (dst == src)
 		return dst;
-	if (dst > src && dst < src + len) {
+	if (dst > src && d < s + len) {
 		d += len - 1;
 		s += len - 1;
 		while (len--)

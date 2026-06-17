@@ -34,11 +34,11 @@ unsigned char proof[HLEN_MAX*(HEIGHT_MAX+1)];
 __attribute__((visibility("default")))
 int digest_message(int mlen, int dlen)
 {
+	blake2s_state state;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return 1;
 	if (dlen < 1 || dlen > DLEN_MAX)
 		return 1;
-	blake2s_state state;
 	blake2s_init(&state, dlen);
 	blake2s_update(&state, message, mlen);
 	blake2s_final(&state, digest, dlen);
@@ -48,16 +48,16 @@ int digest_message(int mlen, int dlen)
 __attribute__((visibility("default")))
 int digest_blocks(int height, int blen, int hlen)
 {
+	blake2s_state init, state;
+	int leaves = 1 << height;
+	int woff = leaves - 1;
 	if (height < 2 || height > HEIGHT_MAX)
 		return 1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return 1;
 	if (hlen < 1 || hlen > HLEN_MAX)
 		return 1;
-	blake2s_state init, state;
 	blake2s_init_key(&init, hlen, &leaf_key, 1);
-	int leaves = 1 << height;
-	int woff = leaves - 1;
 	while (leaves--) {
 		state = init;
 		blake2s_update(&state, blocks+blen*leaves, blen);
@@ -80,17 +80,17 @@ int digest_blocks(int height, int blen, int hlen)
 __attribute__((visibility("default")))
 int extract_proof(int height, int blen, int hlen, int index)
 {
+	int leaves = 1 << height;
+	int roff = leaves - 1;
 	if (height < 2 || height > HEIGHT_MAX)
 		return 1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return 1;
 	if (hlen < 1 || hlen > HLEN_MAX)
 		return 1;
-	int leaves = 1 << height;
 	if (index < 0 || index >= leaves)
 		return 1;
 	memcpy(block, blocks+blen*index, blen);
-	int roff = leaves - 1;
 	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;
@@ -105,20 +105,20 @@ int extract_proof(int height, int blen, int hlen, int index)
 __attribute__((visibility("default")))
 int verify_proof(int height, int blen, int hlen, int index)
 {
+	blake2s_state init, state;
+	unsigned char hash[HLEN_MAX];
+	int leaves = 1 << height;
 	if (height < 2 || height > HEIGHT_MAX)
 		return 1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return 1;
 	if (hlen < 1 || hlen > HLEN_MAX)
 		return 1;
-	int leaves = 1 << height;
 	if (index < 0 || index >= leaves)
 		return 1;
-	blake2s_state init, state;
 	blake2s_init_key(&init, hlen, &leaf_key, 1);
 	state = init;
 	blake2s_update(&state, block, blen);
-	unsigned char hash[HLEN_MAX];
 	blake2s_final(&state, hash, hlen);
 	blake2s_init_key(&init, hlen, &node_key, 1);
 	while (height) {

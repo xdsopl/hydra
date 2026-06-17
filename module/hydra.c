@@ -58,19 +58,20 @@ int digest_blocks(int height, int blen, int hlen)
 	blake2s_init_key(&init, hlen, &leaf_key, 1);
 	int leaves = 1 << height;
 	int woff = leaves - 1;
-	for (int i = 0; i < leaves; i++) {
+	while (leaves--) {
 		state = init;
-		blake2s_update(&state, blocks+blen*i, blen);
-		blake2s_final(&state, hashes+hlen*(woff+i), hlen);
+		blake2s_update(&state, blocks+blen*leaves, blen);
+		blake2s_final(&state, hashes+hlen*(woff+leaves), hlen);
 	}
 	blake2s_init_key(&init, hlen, &node_key, 1);
-	for (int nodes = leaves / 2; nodes; nodes /= 2) {
+	while (height--) {
+		int nodes = 1 << height;
 		int roff = woff;
 		woff -= nodes;
-		for (int i = 0; i < nodes; i++) {
+		while (nodes--) {
 			state = init;
-			blake2s_update(&state, hashes+hlen*(roff+2*i), 2*hlen);
-			blake2s_final(&state, hashes+hlen*(woff+i), hlen);
+			blake2s_update(&state, hashes+hlen*(roff+2*nodes), 2*hlen);
+			blake2s_final(&state, hashes+hlen*(woff+nodes), hlen);
 		}
 	}
 	return 0;
@@ -90,11 +91,12 @@ int extract_proof(int height, int blen, int hlen, int index)
 		return 1;
 	memcpy(block, blocks+blen*index, blen);
 	int roff = leaves - 1;
-	for (int j = height; j > 0; j--) {
+	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;
-		memcpy(proof+hlen*j, hashes+hlen*(roff+sibling), hlen);
-		roff -= 1 << (j - 1);
+		memcpy(proof+hlen*height, hashes+hlen*(roff+sibling), hlen);
+		height--;
+		roff -= 1 << height;
 	}
 	memcpy(proof, hashes, hlen);
 	return 0;
@@ -119,15 +121,17 @@ int verify_proof(int height, int blen, int hlen, int index)
 	unsigned char hash[HLEN_MAX];
 	blake2s_final(&state, hash, hlen);
 	blake2s_init_key(&init, hlen, &node_key, 1);
-	for (int j = height; j > 0; j--) {
-		state = init;
-		unsigned char *left = hash, *right = proof+hlen*j;
+	while (height) {
+		unsigned char *left = hash;
+		unsigned char *right = proof+hlen*height;
+		height--;
 		if (index & 1) {
 			unsigned char *tmp = left;
 			left = right;
 			right = tmp;
 		}
 		index /= 2;
+		state = init;
 		blake2s_update(&state, left, hlen);
 		blake2s_update(&state, right, hlen);
 		blake2s_final(&state, hash, hlen);

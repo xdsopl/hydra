@@ -86,18 +86,15 @@ int extract_proof(int height, int blen, int hlen, int index)
 	int leaves = 1 << height;
 	if (index < 0 || index >= leaves)
 		return 1;
-	for (int i = 0; i < blen; i++)
-		block[i] = blocks[blen*index+i];
+	memcpy(block, blocks+blen*index, blen);
 	int roff = leaves - 1;
 	for (int j = height; j > 0; j--) {
 		int sibling = index ^ 1;
 		index /= 2;
-		for (int i = 0; i < hlen; i++)
-			proof[hlen*j+i] = hashes[hlen*(roff+sibling)+i];
+		memcpy(proof+hlen*j, hashes+hlen*(roff+sibling), hlen);
 		roff -= 1 << (j - 1);
 	}
-	for (int i = 0; i < hlen; i++)
-		proof[i] = hashes[i];
+	memcpy(proof, hashes, hlen);
 	return 0;
 }
 

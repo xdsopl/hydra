@@ -37,17 +37,21 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		for (let i = 0; i < blocks.length; ++i)
 			blocks[i] = Math.trunc(Math.random() * 256);
 		start = performance.now();
-		let ret = wasm.digest_blocks(3, 1024, 16);
+		let height = 3;
+		let ret = wasm.digest_blocks(height, 1024, 16);
 		print_str("ret = " + ret);
 		end = performance.now();
 		print_ms("digest_blocks", start, end);
 		let root_hash = new Uint8Array(buffer, wasm.hashes, 16);
 		print_hex("Root hash", root_hash);
-		let proof = new Uint8Array(buffer, wasm.proof, 16*4);
-		for (let i = 0; i < 8; ++i) {
-			wasm.extract_proof(3, 1024, 16, i);
-			print_hex("Proof", proof);
-			ret = wasm.verify_proof(3, 1024, 16, i);
+		let proof = new Uint8Array(buffer, wasm.proof, 16*(height+1));
+		let block = new Uint8Array(buffer, wasm.block, 1024);
+		let leafs = 1 << height;
+		for (let i = 0; i < leafs; ++i) {
+			wasm.extract_proof(height, 1024, 16, i);
+			//proof[Math.trunc(Math.random() * proof.length)] ^= 1 << Math.trunc(Math.random() * 8);
+			//block[Math.trunc(Math.random() * block.length)] ^= 1 << Math.trunc(Math.random() * 8);
+			ret = wasm.verify_proof(height, 1024, 16, i);
 			print_str("ret = " + ret);
 		}
 	});

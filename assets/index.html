@@ -33,25 +33,23 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		print_ms("digest_message", start, end);
 		let digest = new Uint8Array(buffer, wasm.digest, 16);
 		print_hex("Digest", digest);
-		let blocks = new Uint8Array(buffer, wasm.blocks, 1 << 20);
+		let height = 3;
+		let leafs = 1 << height;
+		let block = new Uint8Array(buffer, wasm.block, 1024);
+		let blocks = new Uint8Array(buffer, wasm.blocks, block.length * leafs);
 		for (let i = 0; i < blocks.length; ++i)
 			blocks[i] = Math.trunc(Math.random() * 256);
 		start = performance.now();
-		let height = 3;
-		let ret = wasm.digest_blocks(height, 1024, 16);
+		let ret = wasm.digest_blocks(height, block.length, 16);
 		print_str("ret = " + ret);
 		end = performance.now();
 		print_ms("digest_blocks", start, end);
-		let root_hash = new Uint8Array(buffer, wasm.hashes, 16);
-		print_hex("Root hash", root_hash);
 		let proof = new Uint8Array(buffer, wasm.proof, 16*(height+1));
-		let block = new Uint8Array(buffer, wasm.block, 1024);
-		let leafs = 1 << height;
 		for (let i = 0; i < leafs; ++i) {
-			wasm.extract_proof(height, 1024, 16, i);
+			wasm.extract_proof(height, block.length, 16, i);
 			//proof[Math.trunc(Math.random() * proof.length)] ^= 1 << Math.trunc(Math.random() * 8);
 			//block[Math.trunc(Math.random() * block.length)] ^= 1 << Math.trunc(Math.random() * 8);
-			ret = wasm.verify_proof(height, 1024, 16, i);
+			ret = wasm.verify_proof(height, block.length, 16, i);
 			print_str("ret = " + ret);
 		}
 	});

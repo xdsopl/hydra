@@ -9,14 +9,14 @@ LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
 CFLAGS += -std=c89 -W -Wall -pedantic -O2 -Iquirks
 BLAKE2 = -Iblake2_ref
 
-assets/hydra.wasm.gz: assets/hydra.wasm
-	gzip -f -n $<
+assets/hydra.wasm.gz: temp/hydra.wasm
+	gzip -n -c $< > $@
 
 .PHONY: webserver
 webserver:
 	go run tools/webserver.go
 
-assets/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o
+temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h

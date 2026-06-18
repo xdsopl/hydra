@@ -34,24 +34,24 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		print_ms("digest_message", start, end);
 		let digest = new Uint8Array(buffer, wasm.digest, dlen);
 		print_hex("Digest", digest);
-		let height = 3;
-		let leafs = 1 << height;
+		let height = 8;
+		let leaves = 1 << height;
 		let block = new Uint8Array(buffer, wasm.block, 1024);
-		let blocks = new Uint8Array(buffer, wasm.blocks, block.length * leafs);
+		let blocks = new Uint8Array(buffer, wasm.blocks, block.length * leaves);
 		for (let i = 0; i < blocks.length; ++i)
 			blocks[i] = Math.trunc(Math.random() * 256);
 		start = performance.now();
-		let ret = wasm.digest_blocks(height, block.length, dlen);
-		print_str("ret = " + ret);
+		if (wasm.digest_blocks(height, block.length, dlen))
+			print_str("Digesting failed!");
 		end = performance.now();
 		print_ms("digest_blocks", start, end);
 		let proof = new Uint8Array(buffer, wasm.proof, dlen*(height+1));
-		for (let i = 0; i < leafs; ++i) {
+		for (let i = 0; i < leaves; ++i) {
 			wasm.extract_proof(height, block.length, dlen, i);
 			//proof[Math.trunc(Math.random() * proof.length)] ^= 1 << Math.trunc(Math.random() * 8);
 			//block[Math.trunc(Math.random() * block.length)] ^= 1 << Math.trunc(Math.random() * 8);
-			ret = wasm.verify_proof(height, block.length, dlen, i);
-			print_str("ret = " + ret);
+			if (wasm.verify_proof(height, block.length, dlen, i))
+				print_str("Verification of proof " + i + " failed!");
 		}
 	});
 </script>

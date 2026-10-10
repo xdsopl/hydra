@@ -23,7 +23,7 @@ The protocol uses two distinct paths depending on whether erasure coding is acti
 When $K = 1$, no M31 encoding is performed. The message is stored as-is with zero chunk indexing overhead.
 * **Layout Structure:**
   ```
-  [ Byte 0: digest_flag + (K - 1) ] [ Hash (16 or 32 bytes) ] [ Message Payload ]
+  [ Byte 0: digest_flag + (K - 1) ] [ Message Payload ] [ Hash (16 or 32 bytes) ]
   ```
 * **Byte 0 Breakdown:**
   * **Bit 0 (`digest_flag`):** `0` = 16-byte Blake2s digest, `1` = 32-byte Blake2s digest.
@@ -34,7 +34,7 @@ When $K = 1$, no M31 encoding is performed. The message is stored as-is with zer
 When $K > 1$, the message is split into $K$ chunks, expanded to $N$ total shards via Cauchy matrix multiplication over $M31$, and bundled with full cryptographic proof materials.
 * **Layout Structure:**
   ```
-  [ Byte 0: digest_flag + (K - 1) ] [ Byte 1: chunk_index (0..255) ] [ Merkle Proof Path ] [ Shard Payload ]
+  [ Byte 0: digest_flag + (K - 1) ] [ Byte 1: chunk_index (0..255) ] [ Shard Payload ] [ Merkle Proof Path ]
   ```
 * **Byte Breakdown:**
   * **Byte 0:** Bit 0 = `digest_flag`, Bits 1–7 = $K - 1$ (values $1$ to $127$ for $K \in [2, 128]$).

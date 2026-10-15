@@ -4,7 +4,7 @@
 
 CC = clang
 CXX = clang++
-CFLAGS = -std=c89 -W -Wall -pedantic -O2 -Iquirks -ffreestanding -fvisibility=hidden --target=wasm32
+CFLAGS = -std=c99 -W -Wall -pedantic -O2 -Iquirks -ffreestanding -fvisibility=hidden --target=wasm32
 CXXFLAGS = -std=c++11 -W -Wall -O2 -fno-exceptions -fno-rtti -ffreestanding -fvisibility=hidden --target=wasm32
 LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
 BLAKE2 = -Iblake2_ref
@@ -27,7 +27,7 @@ temp/hydra.o: module/hydra.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 temp/merkle.o: module/merkle.c quirks/string.h blake2_ref/blake2.h
-	$(CC) $(CFLAGS) $(BLAKE2) -c -o $@ $<
+	$(CC) $(CFLAGS) -std=c89 $(BLAKE2) -c -o $@ $<
 
 temp/string.o: quirks/string.c quirks/string.h
 	$(CC) $(CFLAGS) -c -o $@ $<

@@ -12,12 +12,16 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 #define MLEN_MAX (1 << 20)
 #define BLEN_MAX 8192
+#define HEIGHT_MAX 8
+#define BCNT_MAX (1 << HEIGHT_MAX)
 
 typedef CODE::PrimeField<uint32_t, 0x7FFFFFFF> M31;
 static CODE::MersenneRemapping<MLEN_MAX> remap;
 static CODE::CauchyPrimeFieldErasureCoding<M31> cme;
 static M31 message_values[(31 + MLEN_MAX * 8 + 30) / 31];
 static M31 chunk_values[(BLEN_MAX * 8) / 31];
+static M31 received_values[(31 + MLEN_MAX * 8 + 30) / 31];
+static int block_ids[BCNT_MAX];
 
 extern "C" {
 
@@ -43,6 +47,27 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 		for (int j = (block_values * 31 + 7) / 8; j < blen; ++j)
 			blocks[i*blen+j] = 0;
 	}
+	return 0;
+}
+
+int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int mlen, int blen)
+{
+	if (mlen <= blen)
+		return -1;
+	if (K < 1)
+		return -1;
+	int block_values = (31 + mlen * 8 + K * 31 - 1) / (K * 31);
+	int block_bits = block_values * 31;
+	int block_bytes = (block_bits + 7) / 8;
+	if (blen < block_bytes)
+		return -1;
+	for (int i = 0; i < K; ++i) {
+		block_ids[i] = K + indices[i];
+		CODE::MersennePacking::pack(received_values+i*block_values, blocks+i*blen, block_values, block_bytes);
+	}
+	for (int i = 0; i < K; ++i)
+		cme.decode(message_values+i*block_values, received_values, block_ids, i, block_values, K);
+	CODE::MersennePacking::decode(message, message_values+1, mlen, message_values[0]);
 	return 0;
 }
 

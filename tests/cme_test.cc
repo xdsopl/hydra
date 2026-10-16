@@ -15,6 +15,8 @@ static unsigned char message[MLEN_MAX];
 static unsigned char output[MLEN_MAX];
 static unsigned char blocks[BLEN_MAX*NMAX];
 static unsigned char unpacked[BLEN_MAX];
+static unsigned char chosen[BLEN_MAX*NMAX];
+static unsigned char indices[NMAX];
 static M31 received[VALUES_MAX];
 static M31 data[VALUES_MAX];
 static int idents[NMAX];
@@ -75,18 +77,27 @@ static void roundtrip(int K, int N, int mlen, int blen, int pattern)
 		if (N == K && variant)
 			break;
 		choose_blocks(K, N, variant);
-		for (int j = 0; j < K; ++j) {
-			idents[j] = K + order[j];
-			CODE::MersennePacking::pack(received+block_values*j, blocks+blen*order[j], block_values, block_bytes);
-			CODE::MersennePacking::unpack(unpacked, received+block_values*j, block_values, block_bytes);
-			check(!memcmp(unpacked, blocks+blen*order[j], block_bytes), "block packing roundtrip", K, N, mlen, blen);
+		if (!variant) {
+			for (int j = 0; j < K; ++j) {
+				idents[j] = K + order[j];
+				CODE::MersennePacking::pack(received+block_values*j, blocks+blen*order[j], block_values, block_bytes);
+				CODE::MersennePacking::unpack(unpacked, received+block_values*j, block_values, block_bytes);
+				check(!memcmp(unpacked, blocks+blen*order[j], block_bytes), "block packing roundtrip", K, N, mlen, blen);
+			}
+			for (int i = 0; i < K; ++i)
+				cme.decode(data+block_values*i, received, idents, i, block_values, K);
+			for (int i = 1 + (mlen * 8 + 30) / 31; i < block_values * K; ++i)
+				check(data[i] == M31(0), "padding values decode to zero", K, N, mlen, blen);
+			CODE::MersennePacking::decode(output, data+1, mlen, data[0]);
+			check(!memcmp(output, message, mlen), "decoded message matches", K, N, mlen, blen);
 		}
-		for (int i = 0; i < K; ++i)
-			cme.decode(data+block_values*i, received, idents, i, block_values, K);
-		for (int i = 1 + (mlen * 8 + 30) / 31; i < block_values * K; ++i)
-			check(data[i] == M31(0), "padding values decode to zero", K, N, mlen, blen);
-		CODE::MersennePacking::decode(output, data+1, mlen, data[0]);
-		check(!memcmp(output, message, mlen), "decoded message matches", K, N, mlen, blen);
+		for (int j = 0; j < K; ++j) {
+			indices[j] = order[j];
+			memcpy(chosen+blen*j, blocks+blen*order[j], blen);
+		}
+		memset(output, 0xA5, mlen);
+		check(!cme_decode_message(output, chosen, indices, K, blen), "decode_message", K, N, mlen, blen);
+		check(!memcmp(output, message, mlen), "decode_message output matches", K, N, mlen, blen);
 	}
 }
 
@@ -100,6 +111,9 @@ static void rejections()
 	check(cme_encode_message(blocks, message, 0, N, capacity, blen) == -1, "K 0 is rejected", 0, N, capacity, blen);
 	check(cme_encode_message(blocks, message, K, K - 1, capacity, blen) == -1, "N below K is rejected", K, K - 1, capacity, blen);
 	check(cme_encode_message(blocks, message, K, N, 4, 3) == -1, "blen below 4 is rejected", K, N, 4, 3);
+	check(cme_decode_message(output, blocks, indices, 0, blen) == -1, "decode with K 0 is rejected", 0, N, 0, blen);
+	check(cme_decode_message(output, blocks, indices, 2, 4) == -1, "decode with capacity below blen is rejected", 2, N, 0, 4);
+	check(cme_decode_message(output, blocks, indices, K, 3) == -1, "decode with blen below 4 is rejected", K, N, 0, 3);
 }
 
 static bool wanted(int K, int blen, int capacity, int mlen, int pattern)

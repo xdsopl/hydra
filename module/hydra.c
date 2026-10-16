@@ -72,3 +72,32 @@ int total_blocks(int height)
 	return N;
 }
 
+int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen);
+int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int dlen);
+int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int dlen, int index);
+int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index);
+
+__attribute__((visibility("default")))
+int digest_message(int mlen, int dlen)
+{
+	return merkle_digest_message(digest, message, mlen, dlen);
+}
+
+__attribute__((visibility("default")))
+int digest_blocks(int height, int blen, int dlen)
+{
+	return merkle_digest_blocks(hashes, blocks, height, blen, dlen);
+}
+
+__attribute__((visibility("default")))
+int extract_proof(int height, int blen, int dlen, int index)
+{
+	return merkle_extract_proof(block, proof, blocks, hashes, height, blen, dlen, index);
+}
+
+__attribute__((visibility("default")))
+int verify_proof(int height, int blen, int dlen, int index)
+{
+	return merkle_verify_proof(block, proof, height, blen, dlen, index);
+}
+

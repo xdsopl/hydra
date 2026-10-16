@@ -10,27 +10,12 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define MLEN_MAX (1 << 20)
 #define BLEN_MAX 8192
 #define HEIGHT_MAX 8
-#define BCNT_MAX (1 << HEIGHT_MAX)
 
 /* prevent second preimage attack */
 static const unsigned char leaf_key = 0;
 static const unsigned char node_key = 1;
 
-__attribute__((visibility("default")))
-extern unsigned char digest[32];
-__attribute__((visibility("default")))
-extern unsigned char message[MLEN_MAX];
-__attribute__((visibility("default")))
-extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
-__attribute__((visibility("default")))
-extern unsigned char hashes[32*2*BCNT_MAX];
-__attribute__((visibility("default")))
-extern unsigned char block[BLEN_MAX];
-__attribute__((visibility("default")))
-extern unsigned char proof[32*(HEIGHT_MAX+1)];
-
-__attribute__((visibility("default")))
-int digest_message(int mlen, int dlen)
+int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen)
 {
 	blake2s_state state;
 	if (mlen < 1 || mlen > MLEN_MAX)
@@ -43,8 +28,7 @@ int digest_message(int mlen, int dlen)
 	return 0;
 }
 
-__attribute__((visibility("default")))
-int digest_blocks(int height, int blen, int dlen)
+int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int dlen)
 {
 	blake2s_state init, state;
 	int leaves = 1 << height;
@@ -75,8 +59,7 @@ int digest_blocks(int height, int blen, int dlen)
 	return 0;
 }
 
-__attribute__((visibility("default")))
-int extract_proof(int height, int blen, int dlen, int index)
+int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int dlen, int index)
 {
 	int leaves = 1 << height;
 	int roff = leaves - 1;
@@ -100,8 +83,7 @@ int extract_proof(int height, int blen, int dlen, int index)
 	return 0;
 }
 
-__attribute__((visibility("default")))
-int verify_proof(int height, int blen, int dlen, int index)
+int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index)
 {
 	blake2s_state init, state;
 	unsigned char hash[32];

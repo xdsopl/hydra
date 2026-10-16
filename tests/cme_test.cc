@@ -69,7 +69,7 @@ static void roundtrip(int K, int N, int mlen, int blen, int pattern)
 	int block_bytes = (block_values * 31 + 7) / 8;
 	fill_message(mlen, pattern);
 	memset(blocks, 0xA5, blen * N);
-	check(!cme_encode_message(blocks, message, K, N, mlen, blen), "encode_message", K, N, mlen, blen);
+	check(!cme_encode_message(blocks, message, K, N, mlen, blen, blen), "encode_message", K, N, mlen, blen);
 	for (int i = 0; i < N; ++i)
 		for (int j = block_bytes; j < blen; ++j)
 			check(!blocks[i*blen+j], "block padding is zero", K, N, mlen, blen);
@@ -96,7 +96,7 @@ static void roundtrip(int K, int N, int mlen, int blen, int pattern)
 			memcpy(chosen+blen*j, blocks+blen*order[j], blen);
 		}
 		memset(output, 0xA5, mlen);
-		check(!cme_decode_message(output, chosen, indices, K, blen), "decode_message", K, N, mlen, blen);
+		check(!cme_decode_message(output, chosen, indices, K, blen, blen), "decode_message", K, N, mlen, blen);
 		check(!memcmp(output, message, mlen), "decode_message output matches", K, N, mlen, blen);
 	}
 }
@@ -105,15 +105,36 @@ static void rejections()
 {
 	int K = 4, N = 8, blen = 100;
 	int capacity = (K * (blen * 8 / 31) * 31 - 31) / 8;
-	check(cme_encode_message(blocks, message, K, N, capacity + 1, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
-	check(cme_encode_message(blocks, message, K, N, blen, blen) == -1, "mlen equal blen is rejected", K, N, blen, blen);
-	check(cme_encode_message(blocks, message, K, N, blen - 1, blen) == -1, "mlen below blen is rejected", K, N, blen - 1, blen);
-	check(cme_encode_message(blocks, message, 0, N, capacity, blen) == -1, "K 0 is rejected", 0, N, capacity, blen);
-	check(cme_encode_message(blocks, message, K, K - 1, capacity, blen) == -1, "N below K is rejected", K, K - 1, capacity, blen);
-	check(cme_encode_message(blocks, message, K, N, 4, 3) == -1, "blen below 4 is rejected", K, N, 4, 3);
-	check(cme_decode_message(output, blocks, indices, 0, blen) == -1, "decode with K 0 is rejected", 0, N, 0, blen);
-	check(cme_decode_message(output, blocks, indices, 2, 4) == -1, "decode with capacity below blen is rejected", 2, N, 0, 4);
-	check(cme_decode_message(output, blocks, indices, K, 3) == -1, "decode with blen below 4 is rejected", K, N, 0, 3);
+	check(cme_encode_message(blocks, message, K, N, capacity + 1, blen, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
+	check(cme_encode_message(blocks, message, K, N, blen, blen, blen) == -1, "mlen equal blen is rejected", K, N, blen, blen);
+	check(cme_encode_message(blocks, message, K, N, blen - 1, blen, blen) == -1, "mlen below blen is rejected", K, N, blen - 1, blen);
+	check(cme_encode_message(blocks, message, 0, N, capacity, blen, blen) == -1, "K 0 is rejected", 0, N, capacity, blen);
+	check(cme_encode_message(blocks, message, K, K - 1, capacity, blen, blen) == -1, "N below K is rejected", K, K - 1, capacity, blen);
+	check(cme_encode_message(blocks, message, K, N, 4, 3, 3) == -1, "blen below 4 is rejected", K, N, 4, 3);
+	check(cme_decode_message(output, blocks, indices, 0, blen, blen) == -1, "decode with K 0 is rejected", 0, N, 0, blen);
+	check(cme_decode_message(output, blocks, indices, 2, 4, 4) == -1, "decode with capacity below blen is rejected", 2, N, 0, 4);
+	check(cme_decode_message(output, blocks, indices, K, 3, 3) == -1, "decode with blen below 4 is rejected", K, N, 0, 3);
+	check(cme_encode_message(blocks, message, K, N, capacity, blen, blen - 1) == -1, "stride below blen is rejected", K, N, capacity, blen);
+	check(cme_decode_message(output, blocks, indices, K, blen, blen - 1) == -1, "decode with stride below blen is rejected", K, N, 0, blen);
+}
+
+static void strided()
+{
+	int K = 5, N = 16, mlen = 1000, blen = 300, stride = blen + 3;
+	fill_message(mlen, 0);
+	memset(blocks, 0xA5, stride * N);
+	check(!cme_encode_message(blocks, message, K, N, mlen, blen, stride), "strided encode_message", K, N, mlen, blen);
+	check(!cme_encode_message(chosen, message, K, N, mlen, blen, blen), "packed encode_message", K, N, mlen, blen);
+	for (int i = 0; i < N; ++i) {
+		for (int j = blen; j < stride; ++j)
+			check(blocks[i*stride+j] == 0xA5, "stride gap is untouched", K, N, mlen, blen);
+		check(!memcmp(blocks+i*stride, chosen+i*blen, blen), "strided block matches packed block", K, N, mlen, blen);
+	}
+	for (int j = 0; j < K; ++j)
+		indices[j] = N - K + j;
+	memset(output, 0xA5, mlen);
+	check(!cme_decode_message(output, blocks+(N-K)*stride, indices, K, blen, stride), "strided decode_message", K, N, mlen, blen);
+	check(!memcmp(output, message, mlen), "strided decode_message output matches", K, N, mlen, blen);
 }
 
 static bool wanted(int K, int blen, int capacity, int mlen, int pattern)
@@ -142,13 +163,14 @@ int main()
 				int capacity = (K * (blen * 8 / 31) * 31 - 31) / 8;
 				int mlens[] = { capacity, capacity - 1, blen + 1, (blen + 1 + capacity) / 2 };
 				if (capacity + 1 > blen)
-					check(cme_encode_message(blocks, message, K, N, capacity + 1, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
+					check(cme_encode_message(blocks, message, K, N, capacity + 1, blen, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
 				for (int mlen : mlens)
 					for (int pattern = 0; pattern < 3; ++pattern)
 						if (wanted(K, blen, capacity, mlen, pattern))
 							roundtrip(K, N, mlen, blen, pattern);
 			}
 	}
+	strided();
 	rejections();
 	if (failures) {
 		printf("cme_test: %d failures\n", failures);

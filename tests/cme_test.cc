@@ -61,13 +61,10 @@ static void choose_blocks(int K, int N, int variant)
 		}
 }
 
-static void roundtrip(int K, int N, int mlen, int extra, int pattern)
+static void roundtrip(int K, int N, int mlen, int blen, int pattern)
 {
-	int block_values = (31 + mlen * 8 + K * 31 - 1) / (K * 31);
+	int block_values = (blen * 8) / 31;
 	int block_bytes = (block_values * 31 + 7) / 8;
-	int blen = block_bytes + extra;
-	if (blen > BLEN_MAX || mlen <= blen)
-		return;
 	fill_message(mlen, pattern);
 	memset(blocks, 0xA5, blen * N);
 	check(!cme_encode_message(blocks, message, K, N, mlen, blen), "encode_message", K, N, mlen, blen);
@@ -95,21 +92,23 @@ static void roundtrip(int K, int N, int mlen, int extra, int pattern)
 
 static void rejections()
 {
-	int K = 4, N = 8, mlen = 1000;
-	int block_values = (31 + mlen * 8 + K * 31 - 1) / (K * 31);
-	int block_bytes = (block_values * 31 + 7) / 8;
-	check(cme_encode_message(blocks, message, K, N, mlen, block_bytes - 1) == -1, "blen below block size is rejected", K, N, mlen, block_bytes - 1);
-	check(cme_encode_message(blocks, message, K, N, mlen, mlen) == -1, "mlen equal blen is rejected", K, N, mlen, mlen);
-	check(cme_encode_message(blocks, message, K, N, mlen, mlen + 1) == -1, "mlen below blen is rejected", K, N, mlen, mlen + 1);
-	check(cme_encode_message(blocks, message, 0, N, mlen, block_bytes) == -1, "K 0 is rejected", 0, N, mlen, block_bytes);
-	check(cme_encode_message(blocks, message, K, K - 1, mlen, block_bytes) == -1, "N below K is rejected", K, K - 1, mlen, block_bytes);
+	int K = 4, N = 8, blen = 100;
+	int capacity = (K * (blen * 8 / 31) * 31 - 31) / 8;
+	check(cme_encode_message(blocks, message, K, N, capacity + 1, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
+	check(cme_encode_message(blocks, message, K, N, blen, blen) == -1, "mlen equal blen is rejected", K, N, blen, blen);
+	check(cme_encode_message(blocks, message, K, N, blen - 1, blen) == -1, "mlen below blen is rejected", K, N, blen - 1, blen);
+	check(cme_encode_message(blocks, message, 0, N, capacity, blen) == -1, "K 0 is rejected", 0, N, capacity, blen);
+	check(cme_encode_message(blocks, message, K, K - 1, capacity, blen) == -1, "N below K is rejected", K, K - 1, capacity, blen);
+	check(cme_encode_message(blocks, message, K, N, 4, 3) == -1, "blen below 4 is rejected", K, N, 4, 3);
 }
 
-static bool wanted(int K, int mlen, int extra, int pattern)
+static bool wanted(int K, int blen, int capacity, int mlen, int pattern)
 {
-	if (extra && pattern)
+	if (mlen <= blen || mlen > capacity)
 		return false;
-	if ((K >= 64 || mlen >= 100000) && (extra || pattern > 1))
+	if (capacity >= 100000 && (mlen != capacity || pattern > 1))
+		return false;
+	if (capacity > 300000 && K < 128)
 		return false;
 	return true;
 }
@@ -117,18 +116,24 @@ static bool wanted(int K, int mlen, int extra, int pattern)
 int main()
 {
 	static const int Ks[] = { 2, 3, 4, 5, 7, 8, 16, 31, 32, 33, 64, 100, 128 };
-	static const int mlens[] = { 100, 1000, 4097, 50000, 1000000 };
-	static const int extras[] = { 0, 1, 5 };
+	static const int blens[] = { 4, 5, 8, 31, 32, 63, 64, 100, 1000, 4097, BLEN_MAX };
 	for (int K : Ks) {
 		int Ns[] = { 2, K };
 		while (Ns[0] < 2 * K)
 			Ns[0] *= 2;
 		for (int N : Ns)
-			for (int mlen : mlens)
-				for (int extra : extras)
+			for (int blen : blens) {
+				if (K >= 64 && (N == K || (blen != 4 && blen != 63 && blen != 4097 && blen != BLEN_MAX)))
+					continue;
+				int capacity = (K * (blen * 8 / 31) * 31 - 31) / 8;
+				int mlens[] = { capacity, capacity - 1, blen + 1, (blen + 1 + capacity) / 2 };
+				if (capacity + 1 > blen)
+					check(cme_encode_message(blocks, message, K, N, capacity + 1, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
+				for (int mlen : mlens)
 					for (int pattern = 0; pattern < 3; ++pattern)
-						if (wanted(K, mlen, extra, pattern))
-							roundtrip(K, N, mlen, extra, pattern);
+						if (wanted(K, blen, capacity, mlen, pattern))
+							roundtrip(K, N, mlen, blen, pattern);
+			}
 	}
 	rejections();
 	if (failures) {

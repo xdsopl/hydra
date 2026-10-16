@@ -31,13 +31,11 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 		return -1;
 	if (K < 1 || N < K)
 		return -1;
-	message_values[0] = remap.encode(message_values+1, message, mlen);
-	int block_values = (31 + mlen * 8 + K * 31 - 1) / (K * 31);
-	int block_bits = block_values * 31;
-	int block_bytes = (block_bits + 7) / 8;
-	if (blen < block_bytes)
-		return -1;
+	int block_values = (blen * 8) / 31;
 	int total_values = block_values * K;
+	if ((31 + mlen * 8 + 30) / 31 > total_values)
+		return -1;
+	message_values[0] = remap.encode(message_values+1, message, mlen);
 	for (int i = (31 + mlen * 8 + 30) / 31; i < total_values; ++i)
 		message_values[i] = M31(0);
 	for (int i = 0; i < N; ++i) {
@@ -56,11 +54,11 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 		return -1;
 	if (K < 1)
 		return -1;
-	int block_values = (31 + mlen * 8 + K * 31 - 1) / (K * 31);
+	int block_values = (blen * 8) / 31;
+	if ((31 + mlen * 8 + 30) / 31 > block_values * K)
+		return -1;
 	int block_bits = block_values * 31;
 	int block_bytes = (block_bits + 7) / 8;
-	if (blen < block_bytes)
-		return -1;
 	for (int i = 0; i < K; ++i) {
 		block_ids[i] = K + indices[i];
 		CODE::MersennePacking::pack(received_values+i*block_values, blocks+i*blen, block_values, block_bytes);

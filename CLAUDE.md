@@ -24,3 +24,8 @@ Code style (match the surrounding code; this is what module/, quirks/ and code_r
 - Headers use `#pragma once`.
 - Do not wrap or re-wrap lines. The longest existing lines are about 95 columns in module/ and quirks/, and 145 in code_ref/ (template specializations), with tab = 8.
 - Keep each file's ending as it is. Most files end with one blank line after the last line; quirks/string.c and code_ref/prime_field.hh do not.
+
+Commit messages (match the existing history):
+- A short lowercase subject, no trailing period, under about 60 characters, saying what changed. Example: `moved block count computation out of encode function`.
+- No body unless the reason is not obvious from the diff.
+- No Co-Authored-By, Claude-Session or other trailers, and no links.

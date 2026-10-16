@@ -8,6 +8,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define BLEN_MAX 8192
 #define HEIGHT_MAX 8
 #define BCNT_MAX (1 << HEIGHT_MAX)
+#define HLEN 2
 
 __attribute__((visibility("default")))
 unsigned char digest[32];
@@ -48,7 +49,9 @@ int needed_blocks(int mlen, int blen)
 		return -1;
 	if (mlen <= blen)
 		return -1;
-	int avail_values = (blen * 8) / 31;
+	int avail_values = ((blen - HLEN) * 8) / 31;
+	if (avail_values < 1)
+		return -1;
 	int avail_bits = avail_values * 31;
 	int K = (31 + mlen * 8 + avail_bits - 1) / avail_bits;
 	return K;
@@ -126,9 +129,16 @@ int encode_message(int K, int N, int mlen, int blen)
 		return -1;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;
-	if (blen < 1 || blen > BLEN_MAX)
+	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
-	return cme_encode_message(blocks, message, K, N, mlen, blen, blen);
+	int ret = cme_encode_message(blocks+HLEN, message, K, N, mlen, blen-HLEN, blen);
+	if (ret)
+		return ret;
+	for (int i = 0; i < N; ++i) {
+		blocks[i*blen] = K - 1;
+		blocks[i*blen+1] = i;
+	}
+	return 0;
 }
 
 __attribute__((visibility("default")))
@@ -136,8 +146,8 @@ int decode_message(int K, int blen)
 {
 	if (needed_height(K) < 0)
 		return -1;
-	if (blen < 1 || blen > BLEN_MAX)
+	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
-	return cme_decode_message(message, blocks, indices, K, blen, blen);
+	return cme_decode_message(message, blocks+HLEN, indices, K, blen-HLEN, blen);
 }
 

@@ -7,10 +7,6 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include "blake2.h"
 #include "string.h"
 
-#define MLEN_MAX (1 << 20)
-#define BLEN_MAX 8192
-#define HEIGHT_MAX 8
-
 /* prevent second preimage attack */
 static const unsigned char leaf_key = 0;
 static const unsigned char node_key = 1;
@@ -18,8 +14,6 @@ static const unsigned char node_key = 1;
 int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen)
 {
 	blake2s_state state;
-	if (mlen < 1 || mlen > MLEN_MAX)
-		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	blake2s_init(&state, dlen);
@@ -33,10 +27,6 @@ int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int heigh
 	blake2s_state init, state;
 	int leaves = 1 << height;
 	int woff = leaves - 1;
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	blake2s_init_key(&init, dlen, &leaf_key, 1);
@@ -63,10 +53,6 @@ int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned ch
 {
 	int leaves = 1 << height;
 	int roff = leaves - 1;
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	if (index < 0 || index >= leaves)
@@ -88,10 +74,6 @@ int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, 
 	blake2s_state init, state;
 	unsigned char hash[32];
 	int leaves = 1 << height;
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	if (index < 0 || index >= leaves)

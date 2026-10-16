@@ -81,24 +81,38 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 __attribute__((visibility("default")))
 int digest_message(int mlen, int dlen)
 {
+	if (mlen < 1 || mlen > MLEN_MAX)
+		return 1;
 	return merkle_digest_message(digest, message, mlen, dlen);
 }
 
 __attribute__((visibility("default")))
 int digest_blocks(int height, int blen, int dlen)
 {
+	if (height < 2 || height > HEIGHT_MAX)
+		return 1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return 1;
 	return merkle_digest_blocks(hashes, blocks, height, blen, dlen);
 }
 
 __attribute__((visibility("default")))
 int extract_proof(int height, int blen, int dlen, int index)
 {
+	if (height < 2 || height > HEIGHT_MAX)
+		return 1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return 1;
 	return merkle_extract_proof(block, proof, blocks, hashes, height, blen, dlen, index);
 }
 
 __attribute__((visibility("default")))
 int verify_proof(int height, int blen, int dlen, int index)
 {
+	if (height < 2 || height > HEIGHT_MAX)
+		return 1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return 1;
 	return merkle_verify_proof(block, proof, height, blen, dlen, index);
 }
 

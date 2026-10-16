@@ -6,6 +6,8 @@ CC = clang
 CXX = clang++
 HOSTCC = cc
 HOSTFLAGS = -W -Wall -pedantic -O2 -g -fsanitize=address,undefined
+HOSTCXX = c++
+HOSTCXXFLAGS = -std=c++11 -W -Wall -pedantic -O2 -g -fsanitize=address,undefined
 CFLAGS = -std=c99 -W -Wall -pedantic -O2 -Iquirks -ffreestanding -fvisibility=hidden --target=wasm32
 CXXFLAGS = -std=c++11 -W -Wall -O2 -fno-exceptions -fno-rtti -ffreestanding -fvisibility=hidden --target=wasm32
 LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
@@ -38,14 +40,18 @@ temp/cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref
 	$(CXX) $(CXXFLAGS) $(CODE) -c -o $@ $<
 
 .PHONY: check
-check: temp/merkle_test
+check: temp/merkle_test temp/cme_test
 	temp/merkle_test
+	temp/cme_test
 
 temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h
 	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c
 
+temp/cme_test: tests/cme_test.cc module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref/mersenne_packing.hh code_ref/prime_field.hh
+	$(HOSTCXX) $(HOSTCXXFLAGS) $(CODE) -o $@ tests/cme_test.cc
+
 .PHONY: clean
 
 clean:
-	rm -f temp/*.o temp/merkle_test
+	rm -f temp/*.o temp/merkle_test temp/cme_test
 

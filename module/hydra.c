@@ -122,6 +122,8 @@ int verify_proof(int height, int blen, int dlen, int index)
 __attribute__((visibility("default")))
 int encode_message(int K, int N, int mlen, int blen)
 {
+	if (N != total_blocks(needed_height(K)))
+		return -1;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;
 	if (blen < 1 || blen > BLEN_MAX)

@@ -22,7 +22,6 @@ __attribute__((visibility("default")))
 unsigned char block[BLEN_MAX];
 __attribute__((visibility("default")))
 unsigned char proof[32*(HEIGHT_MAX+1)];
-__attribute__((visibility("default")))
 unsigned char indices[BCNT_MAX];
 
 __attribute__((visibility("default")))
@@ -142,12 +141,21 @@ int encode_message(int K, int N, int mlen, int blen)
 }
 
 __attribute__((visibility("default")))
-int decode_message(int K, int blen)
+int decode_message(int blen)
 {
-	if (needed_height(K) < 0)
-		return -1;
 	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
+	int K = (blocks[0] & 127) + 1;
+	int N = total_blocks(needed_height(K));
+	if (N < 0)
+		return -1;
+	for (int i = 0; i < K; ++i) {
+		if ((blocks[i*blen] & 127) + 1 != K)
+			return -1;
+		if (blocks[i*blen+1] >= N)
+			return -1;
+		indices[i] = blocks[i*blen+1];
+	}
 	return cme_decode_message(message, blocks+HLEN, indices, K, blen-HLEN, blen);
 }
 

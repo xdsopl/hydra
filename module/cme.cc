@@ -48,14 +48,13 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 	return 0;
 }
 
-int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int mlen, int blen)
+int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen)
 {
-	if (mlen <= blen)
-		return -1;
 	if (K < 1)
 		return -1;
 	int block_values = (blen * 8) / 31;
-	if ((31 + mlen * 8 + 30) / 31 > block_values * K)
+	int capacity = (K * block_values * 31 - 31) / 8;
+	if (capacity <= blen)
 		return -1;
 	int block_bits = block_values * 31;
 	int block_bytes = (block_bits + 7) / 8;
@@ -65,7 +64,7 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 	}
 	for (int i = 0; i < K; ++i)
 		cme.decode(message_values+i*block_values, received_values, block_ids, i, block_values, K);
-	CODE::MersennePacking::decode(message, message_values+1, mlen, message_values[0]);
+	CODE::MersennePacking::decode(message, message_values+1, capacity, message_values[0]);
 	return 0;
 }
 

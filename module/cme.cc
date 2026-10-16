@@ -23,10 +23,6 @@ extern "C" {
 
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen)
 {
-	if (mlen < 1 || mlen > MLEN_MAX)
-		return -1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return -1;
 	if (mlen <= blen)
 		return -1;
 	if (K < 1 || N < K)

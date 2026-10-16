@@ -119,6 +119,10 @@ int verify_proof(int height, int blen, int dlen, int index)
 __attribute__((visibility("default")))
 int encode_message(int K, int N, int mlen, int blen)
 {
+	if (mlen < 1 || mlen > MLEN_MAX)
+		return -1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return -1;
 	return cme_encode_message(blocks, message, K, N, mlen, blen);
 }
 

@@ -12,8 +12,6 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 #define MLEN_MAX (1 << 20)
 #define BLEN_MAX 8192
-#define HEIGHT_MAX 8
-#define BCNT_MAX (1 << HEIGHT_MAX)
 
 typedef CODE::PrimeField<uint32_t, 0x7FFFFFFF> M31;
 static CODE::MersenneRemapping<MLEN_MAX> remap;
@@ -23,13 +21,7 @@ static M31 chunk_values[(BLEN_MAX * 8) / 31];
 
 extern "C" {
 
-__attribute__((visibility("default")))
-extern unsigned char message[MLEN_MAX];
-__attribute__((visibility("default")))
-extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
-
-__attribute__((visibility("default")))
-int encode_message(int K, int N, int mlen, int blen)
+int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen)
 {
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;

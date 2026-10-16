@@ -76,6 +76,7 @@ int merkle_digest_message(unsigned char *digest, unsigned char *message, int mle
 int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int dlen);
 int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int dlen, int index);
 int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index);
+int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen);
 
 __attribute__((visibility("default")))
 int digest_message(int mlen, int dlen)
@@ -99,5 +100,11 @@ __attribute__((visibility("default")))
 int verify_proof(int height, int blen, int dlen, int index)
 {
 	return merkle_verify_proof(block, proof, height, blen, dlen, index);
+}
+
+__attribute__((visibility("default")))
+int encode_message(int K, int N, int mlen, int blen)
+{
+	return cme_encode_message(blocks, message, K, N, mlen, blen);
 }
 

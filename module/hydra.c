@@ -273,7 +273,7 @@ int decode_message(int blen)
 		indices[i] = blocks[i*blen+1];
 		if (merkle_verify_proof(blocks+i*blen, blocks+i*blen+HLEN+plen, height, HLEN + plen, dlen, indices[i]))
 			return -1;
-		if (memcmp(blocks+i*blen+HLEN+plen, blocks+HLEN+plen, dlen))
+		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))
 			return -1;
 	}
 	return cme_decode_message(message, blocks+HLEN, indices, K, plen, blen);

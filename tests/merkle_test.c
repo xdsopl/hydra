@@ -135,7 +135,8 @@ static void test_tree(int height, int blen, int dlen)
 	for (index = 0; index < leaves; ++index) {
 		check(!merkle_extract_proof(block, proof, blocks, hashes, height, blen, blen, dlen, index), "extract_proof", height, blen, dlen, index);
 		check(!memcmp(block, blocks+blen*index, blen), "extracted block", height, blen, dlen, index);
-		check(!memcmp(proof, root, dlen), "proof starts with root", height, blen, dlen, index);
+		check(!memcmp(proof, hashes+dlen*(leaves-1+(index^1)), dlen), "proof starts with sibling", height, blen, dlen, index);
+		check(!memcmp(proof+dlen*height, root, dlen), "proof ends with root", height, blen, dlen, index);
 		check(!merkle_verify_proof(block, proof, height, blen, dlen, index), "verify_proof", height, blen, dlen, index);
 		if (dlen < 16)
 			continue;

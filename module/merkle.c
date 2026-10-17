@@ -55,6 +55,7 @@ int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned ch
 {
 	int leaves = 1 << height;
 	int roff = leaves - 1;
+	int level = 0;
 	if (stride < blen)
 		return 1;
 	if (dlen < 1 || dlen > 32)
@@ -65,11 +66,12 @@ int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned ch
 	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;
-		memcpy(proof+dlen*height, hashes+dlen*(roff+sibling), dlen);
+		memcpy(proof+dlen*level, hashes+dlen*(roff+sibling), dlen);
 		height--;
+		level++;
 		roff -= 1 << height;
 	}
-	memcpy(proof, hashes, dlen);
+	memcpy(proof+dlen*level, hashes, dlen);
 	return 0;
 }
 
@@ -78,6 +80,7 @@ int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, 
 	blake2s_state init, state;
 	unsigned char hash[32];
 	int leaves = 1 << height;
+	int level = 0;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	if (index < 0 || index >= leaves)
@@ -89,8 +92,9 @@ int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, 
 	blake2s_init_key(&init, dlen, &node_key, 1);
 	while (height) {
 		unsigned char *left = hash;
-		unsigned char *right = proof+dlen*height;
+		unsigned char *right = proof+dlen*level;
 		height--;
+		level++;
 		if (index & 1) {
 			unsigned char *tmp = left;
 			left = right;
@@ -102,6 +106,6 @@ int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, 
 		blake2s_update(&state, right, dlen);
 		blake2s_final(&state, hash, dlen);
 	}
-	return !!memcmp(hash, proof, dlen);
+	return !!memcmp(hash, proof+dlen*level, dlen);
 }
 

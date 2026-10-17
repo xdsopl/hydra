@@ -39,6 +39,6 @@ When $K > 1$, the message is split into $K$ chunks, expanded to $N$ total shards
   [ Byte 0: digest_flag + (K - 1) ] [ Byte 1: chunk_index (0..255) ] [ Shard Payload ] [ Merkle Proof Path ]
   ```
 * **Byte Breakdown:**
-  * **Byte 0:** Bits 0–6 = $K - 1$ (values $1$ to $127$ for $K \in [2, 128]$), Bit 7 = `digest_flag`.
+  * **Byte 0:** Bits 0–6 = $K - 1$ (values $1$ to $127$ for $K \in [2, 128]$), Bit 7 = `digest_flag` (`0` = 16-byte, `1` = 32-byte Blake2s hashes).
   * **Byte 1 (`chunk_index`):** 8-bit unsigned integer ($0$ to $255$) identifying the specific shard position.
-  * **Merkle Proof Path:** Consists of $\log_2(N)$ sibling hashes (16 or 32 bytes each), enabling zero-trust verification against the canonical root.
+  * **Merkle Proof Path:** Consists of the root followed by $\log_2(N)$ sibling hashes (16 or 32 bytes each), enabling zero-trust verification against the canonical root. The leaf hash covers Bytes 0 and 1 and the shard payload. The root identifies the message, so blocks of many unrelated messages can be told apart and cached until their siblings arrive.

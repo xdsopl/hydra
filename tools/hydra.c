@@ -16,12 +16,14 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 extern unsigned char message[MLEN_MAX];
 extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
+extern unsigned char block[BLEN_MAX];
 static unsigned char seen[BCNT_MAX];
 
 int needed_blocks(int mlen, int blen, int dlen);
 int needed_height(int K);
 int payload_length(int height, int blen, int dlen);
 int total_blocks(int height);
+int verify_block(int blen);
 int encode_message(int K, int N, int mlen, int blen, int dlen);
 int decode_message(int blen);
 
@@ -81,22 +83,28 @@ static int decode(const char *output, char **names, int count)
 {
 	int blen = 0, K = 0, got = 0;
 	for (int i = 0; i < count && (!K || got < K); ++i) {
-		unsigned char *block = blocks+got*blen;
 		int len = read_file(block, BLEN_MAX, names[i]);
 		if (len <= HLEN) {
 			fprintf(stderr, "skipping %s: could not read block\n", names[i]);
 			continue;
 		}
-		if (!blen)
-			blen = len;
-		if (len != blen) {
-			fprintf(stderr, "skipping %s: length %d differs from %d\n", names[i], len, blen);
+		if (verify_block(len)) {
+			fprintf(stderr, "skipping %s: proof failed\n", names[i]);
 			continue;
 		}
-		if (!K)
+		if (!blen) {
+			blen = len;
 			K = (block[0] & 127) + 1;
-		if ((block[0] & 127) + 1 != K) {
-			fprintf(stderr, "skipping %s: K differs\n", names[i]);
+			memcpy(blocks, block, blen);
+		}
+		if (len != blen || block[0] != blocks[0]) {
+			fprintf(stderr, "skipping %s: from another message\n", names[i]);
+			continue;
+		}
+		int dlen = blocks[0] & 128 ? 32 : 16;
+		int root = blen - dlen * (needed_height(K) + 1);
+		if (memcmp(block+root, blocks+root, dlen)) {
+			fprintf(stderr, "skipping %s: from another message\n", names[i]);
 			continue;
 		}
 		if (seen[block[1]]) {
@@ -104,6 +112,7 @@ static int decode(const char *output, char **names, int count)
 			continue;
 		}
 		seen[block[1]] = 1;
+		memcpy(blocks+got*blen, block, blen);
 		++got;
 	}
 	if (!K || got < K) {

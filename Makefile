@@ -47,6 +47,7 @@ check: temp/merkle_test temp/cme_test temp/hydra
 	temp/merkle_test
 	temp/cme_test
 	temp/hydra encode 256 16 README.md temp/check_a
+	printf X | dd of=temp/check_a031 bs=1 seek=40 conv=notrunc 2> /dev/null
 	temp/hydra decode temp/check_msg_a `ls -r temp/check_a*`
 	cmp -n `wc -c < README.md` README.md temp/check_msg_a
 	temp/hydra encode 512 32 README.md temp/check_b

@@ -153,6 +153,27 @@ int verify_proof(int height, int blen, int dlen, int index)
 }
 
 __attribute__((visibility("default")))
+int verify_block(int blen)
+{
+	if (blen <= HLEN || blen > BLEN_MAX)
+		return -1;
+	int K = (block[0] & 127) + 1;
+	int dlen = block[0] & 128 ? 32 : 16;
+	int height = needed_height(K);
+	int N = total_blocks(height);
+	if (N < 0)
+		return -1;
+	if (block[1] >= N)
+		return -1;
+	int plen = payload_length(height, blen, dlen);
+	if (plen < 0)
+		return -1;
+	if (merkle_verify_proof(block, block+HLEN+plen, height, HLEN + plen, dlen, block[1]))
+		return -1;
+	return 0;
+}
+
+__attribute__((visibility("default")))
 int encode_message(int K, int N, int mlen, int blen, int dlen)
 {
 	if (N != total_blocks(needed_height(K)))

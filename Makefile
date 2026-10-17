@@ -43,9 +43,12 @@ temp/cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref
 	$(CXX) $(CXXFLAGS) $(CODE) -c -o $@ $<
 
 .PHONY: check
-check: temp/merkle_test temp/cme_test
+check: temp/merkle_test temp/cme_test temp/hydra
 	temp/merkle_test
 	temp/cme_test
+	temp/hydra encode 64 README.md temp/check_blk
+	temp/hydra decode temp/check_msg `ls -r temp/check_blk*`
+	cmp -n `wc -c < README.md` README.md temp/check_msg
 
 temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h
 	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c
@@ -62,5 +65,5 @@ temp/host_cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh cod
 .PHONY: clean
 
 clean:
-	rm -f temp/*.o temp/hydra.wasm temp/hydra temp/merkle_test temp/cme_test
+	rm -f temp/*.o temp/hydra.wasm temp/hydra temp/merkle_test temp/cme_test temp/check_*
 

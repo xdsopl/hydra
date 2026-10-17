@@ -56,5 +56,5 @@ temp/cme_test: tests/cme_test.cc module/cme.cc code_ref/cauchy_prime_field_erasu
 .PHONY: clean
 
 clean:
-	rm -f temp/*.o temp/merkle_test temp/cme_test
+	rm -f temp/*.o temp/hydra.wasm temp/merkle_test temp/cme_test
 

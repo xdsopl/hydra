@@ -30,7 +30,7 @@ webserver:
 temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
 	$(CC) $(CFLAGS) $(BLAKE2) -c -o $@ $<
 
-temp/hydra.o: module/hydra.c
+temp/hydra.o: module/hydra.c quirks/string.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 temp/merkle.o: module/merkle.c quirks/string.h blake2_ref/blake2.h
@@ -46,9 +46,12 @@ temp/cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref
 check: temp/merkle_test temp/cme_test temp/hydra
 	temp/merkle_test
 	temp/cme_test
-	temp/hydra encode 64 README.md temp/check_blk
-	temp/hydra decode temp/check_msg `ls -r temp/check_blk*`
-	cmp -n `wc -c < README.md` README.md temp/check_msg
+	temp/hydra encode 256 16 README.md temp/check_a
+	temp/hydra decode temp/check_msg_a `ls -r temp/check_a*`
+	cmp -n `wc -c < README.md` README.md temp/check_msg_a
+	temp/hydra encode 512 32 README.md temp/check_b
+	temp/hydra decode temp/check_msg_b `ls -r temp/check_b*`
+	cmp -n `wc -c < README.md` README.md temp/check_msg_b
 
 temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h
 	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c

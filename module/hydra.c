@@ -4,6 +4,8 @@ WebAssembly HYDRA module for self-healing erasure coding
 Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 */
 
+#include "string.h"
+
 #define MLEN_MAX (1 << 20)
 #define BLEN_MAX 8192
 #define HEIGHT_MAX 8
@@ -40,23 +42,6 @@ int ilog2_ceil(int x)
 }
 
 __attribute__((visibility("default")))
-int needed_blocks(int mlen, int blen)
-{
-	if (mlen < 1 || mlen > MLEN_MAX)
-		return -1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return -1;
-	if (mlen <= blen)
-		return -1;
-	int avail_values = ((blen - HLEN) * 8) / 31;
-	if (avail_values < 1)
-		return -1;
-	int avail_bits = avail_values * 31;
-	int K = (31 + mlen * 8 + avail_bits - 1) / avail_bits;
-	return K;
-}
-
-__attribute__((visibility("default")))
 int needed_height(int K)
 {
 	if (K < 1)
@@ -65,6 +50,52 @@ int needed_height(int K)
 	if (height < 2 || height > HEIGHT_MAX)
 		return -1;
 	return height;
+}
+
+__attribute__((visibility("default")))
+int payload_length(int height, int blen, int dlen)
+{
+	if (height < 2 || height > HEIGHT_MAX)
+		return -1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return -1;
+	if (dlen != 16 && dlen != 32)
+		return -1;
+	int plen = blen - HLEN - dlen * (height + 1);
+	if (plen < 1)
+		return -1;
+	return plen;
+}
+
+__attribute__((visibility("default")))
+int needed_blocks(int mlen, int blen, int dlen)
+{
+	if (mlen < 1 || mlen > MLEN_MAX)
+		return -1;
+	if (blen < 1 || blen > BLEN_MAX)
+		return -1;
+	if (mlen <= blen)
+		return -1;
+	if (dlen != 16 && dlen != 32)
+		return -1;
+	int plen = payload_length(2, blen, dlen);
+	if (plen < 0)
+		return -1;
+	int avail_values = (plen * 8) / 31;
+	if (avail_values < 1)
+		return -1;
+	int avail_bits = avail_values * 31;
+	int K = (31 + mlen * 8 + avail_bits - 1) / avail_bits;
+	for (;; ++K) {
+		plen = payload_length(needed_height(K), blen, dlen);
+		if (plen < 0)
+			return -1;
+		avail_values = (plen * 8) / 31;
+		if (avail_values < 1)
+			return -1;
+		if (K * avail_values * 31 >= 31 + mlen * 8)
+			return K;
+	}
 }
 
 __attribute__((visibility("default")))
@@ -122,21 +153,28 @@ int verify_proof(int height, int blen, int dlen, int index)
 }
 
 __attribute__((visibility("default")))
-int encode_message(int K, int N, int mlen, int blen)
+int encode_message(int K, int N, int mlen, int blen, int dlen)
 {
 	if (N != total_blocks(needed_height(K)))
 		return -1;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;
-	if (blen <= HLEN || blen > BLEN_MAX)
+	int height = needed_height(K);
+	int plen = payload_length(height, blen, dlen);
+	if (plen < 0)
 		return -1;
-	int ret = cme_encode_message(blocks+HLEN, message, K, N, mlen, blen-HLEN, blen);
+	int ret = cme_encode_message(blocks+HLEN, message, K, N, mlen, plen, blen);
 	if (ret)
 		return ret;
 	for (int i = 0; i < N; ++i) {
-		blocks[i*blen] = K - 1;
+		blocks[i*blen] = (K - 1) | (dlen == 32 ? 128 : 0);
 		blocks[i*blen+1] = i;
 	}
+	if (merkle_digest_blocks(hashes, blocks, height, HLEN + plen, blen, dlen))
+		return -1;
+	for (int i = 0; i < N; ++i)
+		if (merkle_extract_proof(block, blocks+i*blen+HLEN+plen, blocks, hashes, height, HLEN + plen, blen, dlen, i))
+			return -1;
 	return 0;
 }
 
@@ -146,16 +184,25 @@ int decode_message(int blen)
 	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
 	int K = (blocks[0] & 127) + 1;
-	int N = total_blocks(needed_height(K));
+	int dlen = blocks[0] & 128 ? 32 : 16;
+	int height = needed_height(K);
+	int N = total_blocks(height);
 	if (N < 0)
 		return -1;
+	int plen = payload_length(height, blen, dlen);
+	if (plen < 0)
+		return -1;
 	for (int i = 0; i < K; ++i) {
-		if ((blocks[i*blen] & 127) + 1 != K)
+		if (blocks[i*blen] != blocks[0])
 			return -1;
 		if (blocks[i*blen+1] >= N)
 			return -1;
 		indices[i] = blocks[i*blen+1];
+		if (merkle_verify_proof(blocks+i*blen, blocks+i*blen+HLEN+plen, height, HLEN + plen, dlen, indices[i]))
+			return -1;
+		if (memcmp(blocks+i*blen+HLEN+plen, blocks+HLEN+plen, dlen))
+			return -1;
 	}
-	return cme_decode_message(message, blocks+HLEN, indices, K, blen-HLEN, blen);
+	return cme_decode_message(message, blocks+HLEN, indices, K, plen, blen);
 }
 

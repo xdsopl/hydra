@@ -18,10 +18,11 @@ extern unsigned char message[MLEN_MAX];
 extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
 static unsigned char seen[BCNT_MAX];
 
-int needed_blocks(int mlen, int blen);
+int needed_blocks(int mlen, int blen, int dlen);
 int needed_height(int K);
+int payload_length(int height, int blen, int dlen);
 int total_blocks(int height);
-int encode_message(int K, int N, int mlen, int blen);
+int encode_message(int K, int N, int mlen, int blen, int dlen);
 int decode_message(int blen);
 
 static int read_file(unsigned char *buf, int max, const char *name)
@@ -47,20 +48,20 @@ static int write_file(const unsigned char *buf, int len, const char *name)
 	return -ret;
 }
 
-static int encode(int blen, const char *input, const char *prefix)
+static int encode(int blen, int dlen, const char *input, const char *prefix)
 {
 	int mlen = read_file(message, MLEN_MAX, input);
 	if (mlen < 0) {
 		fprintf(stderr, "could not read message from %s\n", input);
 		return 1;
 	}
-	int K = needed_blocks(mlen, blen);
+	int K = needed_blocks(mlen, blen, dlen);
 	int N = total_blocks(needed_height(K));
 	if (K < 0 || N < 0) {
-		fprintf(stderr, "unsupported message length %d for block length %d\n", mlen, blen);
+		fprintf(stderr, "unsupported mlen %d, blen %d, dlen %d\n", mlen, blen, dlen);
 		return 1;
 	}
-	if (encode_message(K, N, mlen, blen)) {
+	if (encode_message(K, N, mlen, blen, dlen)) {
 		fprintf(stderr, "encoding failed\n");
 		return 1;
 	}
@@ -113,7 +114,8 @@ static int decode(const char *output, char **names, int count)
 		fprintf(stderr, "decoding failed\n");
 		return 1;
 	}
-	int block_values = ((blen - HLEN) * 8) / 31;
+	int dlen = blocks[0] & 128 ? 32 : 16;
+	int block_values = (payload_length(needed_height(K), blen, dlen) * 8) / 31;
 	int capacity = (K * block_values * 31 - 31) / 8;
 	if (write_file(message, capacity, output)) {
 		fprintf(stderr, "could not write message to %s\n", output);
@@ -124,11 +126,11 @@ static int decode(const char *output, char **names, int count)
 
 int main(int argc, char **argv)
 {
-	if (argc == 5 && !strcmp(argv[1], "encode"))
-		return encode(atoi(argv[2]), argv[3], argv[4]);
+	if (argc == 6 && !strcmp(argv[1], "encode"))
+		return encode(atoi(argv[2]), atoi(argv[3]), argv[4], argv[5]);
 	if (argc >= 4 && !strcmp(argv[1], "decode"))
 		return decode(argv[2], argv+3, argc - 3);
-	fprintf(stderr, "usage: %s encode BLEN MESSAGE PREFIX\n", argv[0]);
+	fprintf(stderr, "usage: %s encode BLEN DLEN MESSAGE PREFIX\n", argv[0]);
 	fprintf(stderr, "       %s decode MESSAGE BLOCK...\n", argv[0]);
 	return 1;
 }

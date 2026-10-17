@@ -78,7 +78,7 @@ int needed_blocks(int mlen, int blen, int dlen)
 		return -1;
 	if (dlen != 16 && dlen != 32)
 		return -1;
-	if (mlen <= blen - 1 - (dlen == 32 ? 16 : 0))
+	if (mlen <= blen - 1 - (dlen == 32 ? 8 : 0))
 		return 1;
 	int plen = payload_length(2, blen, dlen);
 	if (plen < 0)
@@ -120,14 +120,14 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 
 static int verify_single(unsigned char *buf, int blen)
 {
-	unsigned char hash[16];
+	unsigned char hash[8];
 	if (!(buf[0] & 128))
 		return 0;
-	if (blen <= 16)
+	if (blen <= 8)
 		return -1;
-	if (merkle_digest_message(hash, buf, blen - 16, 16))
+	if (merkle_digest_message(hash, buf, blen - 8, 8))
 		return -1;
-	if (memcmp(hash, buf+blen-16, 16))
+	if (memcmp(hash, buf+blen-8, 8))
 		return -1;
 	return 0;
 }
@@ -138,7 +138,7 @@ static int encode_single(int mlen, int blen, int dlen)
 		return -1;
 	if (dlen != 16 && dlen != 32)
 		return -1;
-	int hlen = dlen == 32 ? 16 : 0;
+	int hlen = dlen == 32 ? 8 : 0;
 	if (mlen > blen - 1 - hlen)
 		return -1;
 	blocks[0] = dlen == 32 ? 128 : 0;
@@ -155,7 +155,7 @@ static int decode_single(int blen)
 {
 	if (verify_single(blocks, blen))
 		return -1;
-	int hlen = blocks[0] & 128 ? 16 : 0;
+	int hlen = blocks[0] & 128 ? 8 : 0;
 	memcpy(message, blocks+1, blen - 1 - hlen);
 	return 0;
 }
@@ -286,7 +286,7 @@ int message_capacity(int blen)
 		return -1;
 	int K = (blocks[0] & 127) + 1;
 	if (K == 1)
-		return blen - 1 - (blocks[0] & 128 ? 16 : 0);
+		return blen - 1 - (blocks[0] & 128 ? 8 : 0);
 	int dlen = blocks[0] & 128 ? 32 : 16;
 	int plen = payload_length(needed_height(K), blen, dlen);
 	if (plen < 0)

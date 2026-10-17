@@ -53,8 +53,14 @@ temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c b
 temp/cme_test: tests/cme_test.cc module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref/mersenne_packing.hh code_ref/prime_field.hh
 	$(HOSTCXX) $(HOSTCXXFLAGS) $(CODE) -o $@ tests/cme_test.cc
 
+temp/hydra: tools/hydra.c module/hydra.c module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h temp/host_cme.o
+	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tools/hydra.c module/hydra.c module/merkle.c blake2_ref/blake2s-ref.c temp/host_cme.o
+
+temp/host_cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref/mersenne_packing.hh code_ref/prime_field.hh
+	$(HOSTCXX) $(HOSTCXXFLAGS) $(CODE) -c -o $@ $<
+
 .PHONY: clean
 
 clean:
-	rm -f temp/*.o temp/hydra.wasm temp/merkle_test temp/cme_test
+	rm -f temp/*.o temp/hydra.wasm temp/hydra temp/merkle_test temp/cme_test
 

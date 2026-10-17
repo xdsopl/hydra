@@ -14,15 +14,18 @@ LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
 BLAKE2 = -Iblake2_ref
 CODE = -Icode_ref
 
+temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o temp/cme.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+.PHONY: assets
+assets: assets/hydra.wasm.gz
+
 assets/hydra.wasm.gz: temp/hydra.wasm
 	gzip -n -c $< > $@
 
 .PHONY: webserver
 webserver:
 	go run tools/webserver.go
-
-temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o temp/cme.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
 	$(CC) $(CFLAGS) $(BLAKE2) -c -o $@ $<

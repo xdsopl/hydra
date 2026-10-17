@@ -46,6 +46,8 @@ int needed_height(int K)
 {
 	if (K < 1)
 		return -1;
+	if (K == 1)
+		return 0;
 	int height = 1 + ilog2_ceil(K);
 	if (height < 2 || height > HEIGHT_MAX)
 		return -1;
@@ -74,10 +76,10 @@ int needed_blocks(int mlen, int blen, int dlen)
 		return -1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return -1;
-	if (mlen <= blen)
-		return -1;
 	if (dlen != 16 && dlen != 32)
 		return -1;
+	if (mlen <= blen - 1 - (dlen == 32 ? 16 : 0))
+		return 1;
 	int plen = payload_length(2, blen, dlen);
 	if (plen < 0)
 		return -1;
@@ -101,6 +103,8 @@ int needed_blocks(int mlen, int blen, int dlen)
 __attribute__((visibility("default")))
 int total_blocks(int height)
 {
+	if (height == 0)
+		return 1;
 	if (height < 2 || height > HEIGHT_MAX)
 		return -1;
 	int N = 1 << height;
@@ -113,6 +117,48 @@ int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned ch
 int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index);
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen, int stride);
 int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen, int stride);
+
+static int verify_single(unsigned char *buf, int blen)
+{
+	unsigned char hash[16];
+	if (!(buf[0] & 128))
+		return 0;
+	if (blen <= 16)
+		return -1;
+	if (merkle_digest_message(hash, buf, blen - 16, 16))
+		return -1;
+	if (memcmp(hash, buf+blen-16, 16))
+		return -1;
+	return 0;
+}
+
+static int encode_single(int mlen, int blen, int dlen)
+{
+	if (blen < 1 || blen > BLEN_MAX)
+		return -1;
+	if (dlen != 16 && dlen != 32)
+		return -1;
+	int hlen = dlen == 32 ? 16 : 0;
+	if (mlen > blen - 1 - hlen)
+		return -1;
+	blocks[0] = dlen == 32 ? 128 : 0;
+	memcpy(blocks+1, message, mlen);
+	memset(blocks+1+mlen, 0, blen - 1 - hlen - mlen);
+	if (!hlen)
+		return 0;
+	if (merkle_digest_message(blocks+blen-hlen, blocks, blen - hlen, hlen))
+		return -1;
+	return 0;
+}
+
+static int decode_single(int blen)
+{
+	if (verify_single(blocks, blen))
+		return -1;
+	int hlen = blocks[0] & 128 ? 16 : 0;
+	memcpy(message, blocks+1, blen - 1 - hlen);
+	return 0;
+}
 
 __attribute__((visibility("default")))
 int digest_message(int mlen, int dlen)
@@ -158,6 +204,8 @@ int verify_block(int blen)
 	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
 	int K = (block[0] & 127) + 1;
+	if (K == 1)
+		return verify_single(block, blen);
 	int dlen = block[0] & 128 ? 32 : 16;
 	int height = needed_height(K);
 	int N = total_blocks(height);
@@ -180,6 +228,8 @@ int encode_message(int K, int N, int mlen, int blen, int dlen)
 		return -1;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;
+	if (K == 1)
+		return encode_single(mlen, blen, dlen);
 	int height = needed_height(K);
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
@@ -205,6 +255,8 @@ int decode_message(int blen)
 	if (blen <= HLEN || blen > BLEN_MAX)
 		return -1;
 	int K = (blocks[0] & 127) + 1;
+	if (K == 1)
+		return decode_single(blen);
 	int dlen = blocks[0] & 128 ? 32 : 16;
 	int height = needed_height(K);
 	int N = total_blocks(height);
@@ -225,5 +277,20 @@ int decode_message(int blen)
 			return -1;
 	}
 	return cme_decode_message(message, blocks+HLEN, indices, K, plen, blen);
+}
+
+__attribute__((visibility("default")))
+int message_capacity(int blen)
+{
+	if (blen <= HLEN || blen > BLEN_MAX)
+		return -1;
+	int K = (blocks[0] & 127) + 1;
+	if (K == 1)
+		return blen - 1 - (blocks[0] & 128 ? 16 : 0);
+	int dlen = blocks[0] & 128 ? 32 : 16;
+	int plen = payload_length(needed_height(K), blen, dlen);
+	if (plen < 0)
+		return -1;
+	return (K * ((plen * 8) / 31) * 31 - 31) / 8;
 }
 

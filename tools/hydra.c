@@ -26,6 +26,7 @@ int total_blocks(int height);
 int verify_block(int blen);
 int encode_message(int K, int N, int mlen, int blen, int dlen);
 int decode_message(int blen);
+int message_capacity(int blen);
 
 static int read_file(unsigned char *buf, int max, const char *name)
 {
@@ -123,10 +124,7 @@ static int decode(const char *output, char **names, int count)
 		fprintf(stderr, "decoding failed\n");
 		return 1;
 	}
-	int dlen = blocks[0] & 128 ? 32 : 16;
-	int block_values = (payload_length(needed_height(K), blen, dlen) * 8) / 31;
-	int capacity = (K * block_values * 31 - 31) / 8;
-	if (write_file(message, capacity, output)) {
+	if (write_file(message, message_capacity(blen), output)) {
 		fprintf(stderr, "could not write message to %s\n", output);
 		return 1;
 	}

@@ -22,17 +22,19 @@ int merkle_digest_message(unsigned char *digest, unsigned char *message, int mle
 	return 0;
 }
 
-int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int dlen)
+int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen)
 {
 	blake2s_state init, state;
 	int leaves = 1 << height;
 	int woff = leaves - 1;
+	if (stride < blen)
+		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	blake2s_init_key(&init, dlen, &leaf_key, 1);
 	while (leaves--) {
 		state = init;
-		blake2s_update(&state, blocks+blen*leaves, blen);
+		blake2s_update(&state, blocks+stride*leaves, blen);
 		blake2s_final(&state, hashes+dlen*(woff+leaves), dlen);
 	}
 	blake2s_init_key(&init, dlen, &node_key, 1);
@@ -49,15 +51,17 @@ int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int heigh
 	return 0;
 }
 
-int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int dlen, int index)
+int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index)
 {
 	int leaves = 1 << height;
 	int roff = leaves - 1;
+	if (stride < blen)
+		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
 	if (index < 0 || index >= leaves)
 		return 1;
-	memcpy(block, blocks+blen*index, blen);
+	memcpy(block, blocks+stride*index, blen);
 	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;

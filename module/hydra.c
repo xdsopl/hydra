@@ -77,8 +77,8 @@ int total_blocks(int height)
 }
 
 int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen);
-int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int dlen);
-int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int dlen, int index);
+int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen);
+int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index);
 int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index);
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen, int stride);
 int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen, int stride);
@@ -98,7 +98,7 @@ int digest_blocks(int height, int blen, int dlen)
 		return 1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return 1;
-	return merkle_digest_blocks(hashes, blocks, height, blen, dlen);
+	return merkle_digest_blocks(hashes, blocks, height, blen, blen, dlen);
 }
 
 __attribute__((visibility("default")))
@@ -108,7 +108,7 @@ int extract_proof(int height, int blen, int dlen, int index)
 		return 1;
 	if (blen < 1 || blen > BLEN_MAX)
 		return 1;
-	return merkle_extract_proof(block, proof, blocks, hashes, height, blen, dlen, index);
+	return merkle_extract_proof(block, proof, blocks, hashes, height, blen, blen, dlen, index);
 }
 
 __attribute__((visibility("default")))

@@ -22,7 +22,7 @@ static unsigned char seen[BCNT_MAX];
 int needed_blocks(int mlen, int blen, int dflag);
 int needed_height(int K);
 int payload_length(int height, int blen, int dlen);
-int total_blocks(int height);
+int total_blocks(int K);
 int verify_block(int blen);
 int encode_message(int K, int N, int mlen, int blen, int dflag);
 int decode_message(int blen);
@@ -60,7 +60,7 @@ static int encode(int blen, int dflag, const char *input, const char *prefix)
 		return 1;
 	}
 	int K = needed_blocks(mlen, blen, dflag);
-	int N = total_blocks(needed_height(K));
+	int N = total_blocks(K);
 	if (K < 0 || N < 0) {
 		fprintf(stderr, "unsupported mlen %d, blen %d, dflag %d\n", mlen, blen, dflag);
 		return 1;

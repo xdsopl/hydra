@@ -102,11 +102,10 @@ int needed_blocks(int mlen, int blen, int dflag)
 }
 
 __attribute__((visibility("default")))
-int total_blocks(int height)
+int total_blocks(int K)
 {
-	if (height == 0)
-		return 1;
-	if (height < 2 || height > HEIGHT_MAX)
+	int height = needed_height(K);
+	if (height < 0)
 		return -1;
 	int N = 1 << height;
 	return N;
@@ -206,7 +205,7 @@ int verify_block(int blen)
 		return verify_single(block, blen);
 	int dlen = block[0] & 128 ? 32 : 16;
 	int height = needed_height(K);
-	int N = total_blocks(height);
+	int N = total_blocks(K);
 	if (N < 0)
 		return -1;
 	if (block[1] >= N)
@@ -222,7 +221,7 @@ int verify_block(int blen)
 __attribute__((visibility("default")))
 int encode_message(int K, int N, int mlen, int blen, int dflag)
 {
-	if (N != total_blocks(needed_height(K)))
+	if (N != total_blocks(K))
 		return -1;
 	if (mlen < 1 || mlen > MLEN_MAX)
 		return -1;
@@ -260,7 +259,7 @@ int decode_message(int blen)
 		return decode_single(blen);
 	int dlen = blocks[0] & 128 ? 32 : 16;
 	int height = needed_height(K);
-	int N = total_blocks(height);
+	int N = total_blocks(K);
 	if (N < 0)
 		return -1;
 	int plen = payload_length(height, blen, dlen);

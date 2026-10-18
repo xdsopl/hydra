@@ -33,9 +33,10 @@ static int read_file(unsigned char *buf, int max, const char *name)
 	FILE *file = fopen(name, "rb");
 	if (!file)
 		return -1;
-	int len = fread(buf, 1, max + 1, file);
+	int len = fread(buf, 1, max, file);
+	int more = fgetc(file) != EOF;
 	fclose(file);
-	if (len > max)
+	if (more)
 		return -1;
 	return len;
 }

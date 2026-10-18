@@ -19,12 +19,12 @@ extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
 extern unsigned char block[BLEN_MAX];
 static unsigned char seen[BCNT_MAX];
 
-int needed_blocks(int mlen, int blen, int dlen);
+int needed_blocks(int mlen, int blen, int dflag);
 int needed_height(int K);
 int payload_length(int height, int blen, int dlen);
 int total_blocks(int height);
 int verify_block(int blen);
-int encode_message(int K, int N, int mlen, int blen, int dlen);
+int encode_message(int K, int N, int mlen, int blen, int dflag);
 int decode_message(int blen);
 int message_capacity(int blen);
 
@@ -52,20 +52,20 @@ static int write_file(const unsigned char *buf, int len, const char *name)
 	return -ret;
 }
 
-static int encode(int blen, int dlen, const char *input, const char *prefix)
+static int encode(int blen, int dflag, const char *input, const char *prefix)
 {
 	int mlen = read_file(message, MLEN_MAX, input);
 	if (mlen < 0) {
 		fprintf(stderr, "could not read message from %s\n", input);
 		return 1;
 	}
-	int K = needed_blocks(mlen, blen, dlen);
+	int K = needed_blocks(mlen, blen, dflag);
 	int N = total_blocks(needed_height(K));
 	if (K < 0 || N < 0) {
-		fprintf(stderr, "unsupported mlen %d, blen %d, dlen %d\n", mlen, blen, dlen);
+		fprintf(stderr, "unsupported mlen %d, blen %d, dflag %d\n", mlen, blen, dflag);
 		return 1;
 	}
-	if (encode_message(K, N, mlen, blen, dlen)) {
+	if (encode_message(K, N, mlen, blen, dflag)) {
 		fprintf(stderr, "encoding failed\n");
 		return 1;
 	}
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 		return encode(atoi(argv[2]), atoi(argv[3]), argv[4], argv[5]);
 	if (argc >= 4 && !strcmp(argv[1], "decode"))
 		return decode(argv[2], argv+3, argc - 3);
-	fprintf(stderr, "usage: %s encode BLEN DLEN MESSAGE PREFIX\n", argv[0]);
+	fprintf(stderr, "usage: %s encode BLEN DFLAG MESSAGE PREFIX\n", argv[0]);
 	fprintf(stderr, "       %s decode MESSAGE BLOCK...\n", argv[0]);
 	return 1;
 }

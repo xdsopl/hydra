@@ -46,19 +46,19 @@ temp/cme.o: module/cme.cc code_ref/cauchy_prime_field_erasure_coding.hh code_ref
 check: temp/merkle_test temp/cme_test temp/hydra
 	temp/merkle_test
 	temp/cme_test
-	temp/hydra encode 256 16 README.md temp/check_a
+	temp/hydra encode 256 0 README.md temp/check_a
 	printf X | dd of=temp/check_a031 bs=1 seek=40 conv=notrunc 2> /dev/null
 	temp/hydra decode temp/check_msg_a `ls -r temp/check_a*`
 	head -c `wc -c < README.md` temp/check_msg_a | cmp README.md -
-	temp/hydra encode 512 32 README.md temp/check_b
+	temp/hydra encode 512 1 README.md temp/check_b
 	temp/hydra decode temp/check_msg_b `ls -r temp/check_b*`
 	head -c `wc -c < README.md` temp/check_msg_b | cmp README.md -
-	temp/hydra encode 1024 16 LICENSE temp/check_c
+	temp/hydra encode 1024 0 LICENSE temp/check_c
 	temp/hydra decode temp/check_msg_c temp/check_c000
 	head -c `wc -c < LICENSE` temp/check_msg_c | cmp LICENSE -
 	printf X | dd of=temp/check_c000 bs=1 seek=40 conv=notrunc 2> /dev/null
 	! temp/hydra decode temp/check_msg_c temp/check_c000 2> /dev/null
-	temp/hydra encode 1024 32 LICENSE temp/check_d
+	temp/hydra encode 1024 1 LICENSE temp/check_d
 	temp/hydra decode temp/check_msg_d temp/check_d000
 	head -c `wc -c < LICENSE` temp/check_msg_d | cmp LICENSE -
 	printf X | dd of=temp/check_d000 bs=1 seek=40 conv=notrunc 2> /dev/null

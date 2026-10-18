@@ -28,7 +28,7 @@ webserver:
 	go run tools/webserver.go
 
 temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
-	$(CC) $(CFLAGS) $(BLAKE2) -c -o $@ $<
+	$(CC) $(CFLAGS) -std=c89 $(BLAKE2) -c -o $@ $<
 
 temp/hydra.o: module/hydra.c quirks/string.h
 	$(CC) $(CFLAGS) -c -o $@ $<

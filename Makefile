@@ -5,7 +5,7 @@
 CC = clang
 CXX = clang++
 HOSTCC = cc
-HOSTFLAGS = -W -Wall -pedantic -O2 -g -fsanitize=address,undefined
+HOSTFLAGS = -std=c99 -W -Wall -pedantic -O2 -g -fsanitize=address,undefined
 HOSTCXX = c++
 HOSTCXXFLAGS = -std=c++11 -W -Wall -pedantic -O2 -g -fsanitize=address,undefined
 CFLAGS = -std=c99 -W -Wall -pedantic -O2 -Iquirks -ffreestanding -fvisibility=hidden --target=wasm32

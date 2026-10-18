@@ -219,17 +219,18 @@ int verify_block(int blen)
 }
 
 __attribute__((visibility("default")))
-int encode_message(int K, int N, int mlen, int blen, int dflag)
+int encode_message(int mlen, int blen, int dflag)
 {
-	if (N != total_blocks(K))
+	int K = needed_blocks(mlen, blen, dflag);
+	if (K < 0)
 		return -1;
-	if (mlen < 1 || mlen > MLEN_MAX)
-		return -1;
-	if (dflag != 0 && dflag != 1)
-		return -1;
+	int N = total_blocks(K);
 	int dlen = dflag ? 32 : 16;
-	if (K == 1)
-		return encode_single(mlen, blen, dlen);
+	if (K == 1) {
+		if (encode_single(mlen, blen, dlen))
+			return -1;
+		return N;
+	}
 	int height = needed_height(K);
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
@@ -246,7 +247,7 @@ int encode_message(int K, int N, int mlen, int blen, int dflag)
 	for (int i = 0; i < N; ++i)
 		if (merkle_extract_proof(block, blocks+i*blen+HLEN+plen, blocks, hashes, height, HLEN + plen, blen, dlen, i))
 			return -1;
-	return 0;
+	return N;
 }
 
 __attribute__((visibility("default")))

@@ -23,13 +23,13 @@ The protocol uses two distinct paths depending on whether erasure coding is acti
 When $K = 1$, no M31 encoding is performed. The message is stored as-is with zero chunk indexing overhead.
 * **Layout Structure:**
   ```
-  [ Byte 0: digest_flag + (K - 1) ] [ Message Payload ] [ Hash (optional, 8 bytes) ]
+  [ Byte 0: digest_flag + (K - 1) ] [ Message Payload ] [ Hash (4 or 8 bytes) ]
   ```
 * **Byte 0 Breakdown:**
   * **Bits 0–6 (`K - 1`):** Encoded as `0` (since $K - 1 = 0$).
-  * **Bit 7 (`digest_flag`):** `0` = no hash, `1` = 8-byte Blake2s hash over Byte 0 and the payload.
-* **Error Protection:** The hash only guards against accidental corruption. Normally the overlying system takes care of that, so most messages omit it.
-* **Capacity:** Up to $blen - 1$ bytes of message, or $blen - 9$ bytes with the hash.
+  * **Bit 7 (`digest_flag`):** `0` = 4-byte, `1` = 8-byte Blake2s hash over Byte 0 and the payload.
+* **Error Protection:** The hash only guards against accidental corruption that slipped past the overlying system. The 4-byte hash is the default, the 8-byte hash adds extra protection.
+* **Capacity:** Up to $blen - 5$ bytes of message with the 4-byte hash, or $blen - 9$ bytes with the 8-byte hash.
 * *Omissions:* `chunk_index` and Merkle proof paths are skipped entirely ($N = 1$).
 
 ### Full-Path ($K > 1$, Cauchy Erasure Coding Enabled)

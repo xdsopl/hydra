@@ -103,7 +103,7 @@ static int decode(const char *output, char **names, int count)
 			continue;
 		}
 		int dlen = blocks[0] & 128 ? 32 : 16;
-		if (memcmp(block+blen-dlen, blocks+blen-dlen, dlen)) {
+		if (K > 1 && memcmp(block+blen-dlen, blocks+blen-dlen, dlen)) {
 			fprintf(stderr, "skipping %s: from another message\n", names[i]);
 			continue;
 		}

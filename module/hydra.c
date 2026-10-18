@@ -153,8 +153,9 @@ static int decode_single(int blen)
 	if (verify_single(blocks, blen))
 		return -1;
 	int hlen = blocks[0] & 128 ? 8 : 4;
-	memcpy(message, blocks+1, blen - 1 - hlen);
-	return 0;
+	int len = blen - 1 - hlen;
+	memcpy(message, blocks+1, len);
+	return len;
 }
 
 __attribute__((visibility("default")))
@@ -277,20 +278,7 @@ int decode_message(int blen)
 		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))
 			return -1;
 	}
-	return cme_decode_message(message, blocks+HLEN, indices, K, plen, blen);
-}
-
-__attribute__((visibility("default")))
-int message_capacity(int blen)
-{
-	if (blen <= HLEN || blen > BLEN_MAX)
-		return -1;
-	int K = (blocks[0] & 127) + 1;
-	if (K == 1)
-		return blen - 1 - (blocks[0] & 128 ? 8 : 4);
-	int dlen = blocks[0] & 128 ? 32 : 16;
-	int plen = payload_length(needed_height(K), blen, dlen);
-	if (plen < 0)
+	if (cme_decode_message(message, blocks+HLEN, indices, K, plen, blen))
 		return -1;
 	return (K * ((plen * 8) / 31) * 31 - 31) / 8;
 }

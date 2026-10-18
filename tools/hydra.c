@@ -24,7 +24,6 @@ int payload_length(int height, int blen, int dlen);
 int verify_block(int blen);
 int encode_message(int mlen, int blen, int dflag);
 int decode_message(int blen);
-int message_capacity(int blen);
 
 static int read_file(unsigned char *buf, int max, const char *name)
 {
@@ -113,11 +112,12 @@ static int decode(const char *output, char **names, int count)
 		fprintf(stderr, "not enough blocks: got %d of %d\n", got, K);
 		return 1;
 	}
-	if (decode_message(blen)) {
+	int mlen = decode_message(blen);
+	if (mlen < 0) {
 		fprintf(stderr, "decoding failed\n");
 		return 1;
 	}
-	if (write_file(message, message_capacity(blen), output)) {
+	if (write_file(message, mlen, output)) {
 		fprintf(stderr, "could not write message to %s\n", output);
 		return 1;
 	}

@@ -51,18 +51,19 @@ int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int heigh
 	return 0;
 }
 
-int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index)
+int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index)
 {
+	unsigned char *proof;
 	int leaves = 1 << height;
 	int roff = leaves - 1;
 	int level = 0;
-	if (stride < blen)
-		return 1;
 	if (dlen < 1 || dlen > 32)
+		return 1;
+	if (stride < blen + dlen * (height + 1))
 		return 1;
 	if (index < 0 || index >= leaves)
 		return 1;
-	memcpy(block, blocks+stride*index, blen);
+	proof = blocks+stride*index+blen;
 	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;
@@ -75,9 +76,10 @@ int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned ch
 	return 0;
 }
 
-int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index)
+int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, int index)
 {
 	blake2s_state init, state;
+	unsigned char *proof = block+blen;
 	unsigned char hash[32];
 	int leaves = 1 << height;
 	int level = 0;

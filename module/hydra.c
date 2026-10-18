@@ -104,8 +104,8 @@ int total_blocks(int K)
 
 int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen);
 int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen);
-int merkle_extract_proof(unsigned char *block, unsigned char *proof, unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index);
-int merkle_verify_proof(unsigned char *block, unsigned char *proof, int height, int blen, int dlen, int index);
+int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index);
+int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, int index);
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen, int stride);
 int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen, int stride);
 
@@ -167,7 +167,7 @@ int verify_block(int blen)
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
 		return -1;
-	if (merkle_verify_proof(block, block+HLEN+plen, height, HLEN + plen, dlen, block[1]))
+	if (merkle_verify_block(block, height, HLEN + plen, dlen, block[1]))
 		return -1;
 	return 0;
 }
@@ -199,7 +199,7 @@ int encode_message(int mlen, int blen, int dflag)
 	if (merkle_digest_blocks(hashes, blocks, height, HLEN + plen, blen, dlen))
 		return -1;
 	for (int i = 0; i < N; ++i)
-		if (merkle_extract_proof(block, blocks+i*blen+HLEN+plen, blocks, hashes, height, HLEN + plen, blen, dlen, i))
+		if (merkle_extract_block(blocks, hashes, height, HLEN + plen, blen, dlen, i))
 			return -1;
 	return N;
 }
@@ -226,7 +226,7 @@ int decode_message(int blen)
 		if (blocks[i*blen+1] >= N)
 			return -1;
 		indices[i] = blocks[i*blen+1];
-		if (merkle_verify_proof(blocks+i*blen, blocks+i*blen+HLEN+plen, height, HLEN + plen, dlen, indices[i]))
+		if (merkle_verify_block(blocks+i*blen, height, HLEN + plen, dlen, indices[i]))
 			return -1;
 		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))
 			return -1;

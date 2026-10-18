@@ -13,21 +13,15 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define HLEN 2
 
 __attribute__((visibility("default")))
-unsigned char digest[32];
-__attribute__((visibility("default")))
 unsigned char message[MLEN_MAX];
 __attribute__((visibility("default")))
 unsigned char blocks[BLEN_MAX*BCNT_MAX];
 __attribute__((visibility("default")))
-unsigned char hashes[32*2*BCNT_MAX];
-__attribute__((visibility("default")))
 unsigned char block[BLEN_MAX];
-__attribute__((visibility("default")))
-unsigned char proof[32*(HEIGHT_MAX+1)];
-unsigned char indices[BCNT_MAX];
+static unsigned char hashes[32*2*BCNT_MAX];
+static unsigned char indices[BCNT_MAX];
 
-__attribute__((visibility("default")))
-int ilog2_floor(int x)
+static int ilog2_floor(int x)
 {
 	int l = -1;
 	for (; x > 0; x /= 2)
@@ -35,14 +29,12 @@ int ilog2_floor(int x)
 	return l;
 }
 
-__attribute__((visibility("default")))
-int ilog2_ceil(int x)
+static int ilog2_ceil(int x)
 {
 	return ilog2_floor(x - 1) + 1;
 }
 
-__attribute__((visibility("default")))
-int needed_height(int K)
+static int needed_height(int K)
 {
 	if (K < 1)
 		return -1;
@@ -54,8 +46,7 @@ int needed_height(int K)
 	return height;
 }
 
-__attribute__((visibility("default")))
-int payload_length(int height, int blen, int dlen)
+static int payload_length(int height, int blen, int dlen)
 {
 	if (height < 2 || height > HEIGHT_MAX)
 		return -1;
@@ -156,44 +147,6 @@ static int decode_single(int blen)
 	int len = blen - 1 - hlen;
 	memcpy(message, blocks+1, len);
 	return len;
-}
-
-__attribute__((visibility("default")))
-int digest_message(int mlen, int dlen)
-{
-	if (mlen < 1 || mlen > MLEN_MAX)
-		return 1;
-	return merkle_digest_message(digest, message, mlen, dlen);
-}
-
-__attribute__((visibility("default")))
-int digest_blocks(int height, int blen, int dlen)
-{
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
-	return merkle_digest_blocks(hashes, blocks, height, blen, blen, dlen);
-}
-
-__attribute__((visibility("default")))
-int extract_proof(int height, int blen, int dlen, int index)
-{
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
-	return merkle_extract_proof(block, proof, blocks, hashes, height, blen, blen, dlen, index);
-}
-
-__attribute__((visibility("default")))
-int verify_proof(int height, int blen, int dlen, int index)
-{
-	if (height < 2 || height > HEIGHT_MAX)
-		return 1;
-	if (blen < 1 || blen > BLEN_MAX)
-		return 1;
-	return merkle_verify_proof(block, proof, height, blen, dlen, index);
 }
 
 __attribute__((visibility("default")))

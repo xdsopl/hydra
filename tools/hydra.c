@@ -19,8 +19,6 @@ extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
 extern unsigned char block[BLEN_MAX];
 static unsigned char seen[BCNT_MAX];
 
-int needed_height(int K);
-int payload_length(int height, int blen, int dlen);
 int verify_block(int blen);
 int encode_message(int mlen, int blen, int dflag);
 int decode_message(int blen);

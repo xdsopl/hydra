@@ -5,12 +5,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 */
 
 #include "string.h"
-
-#define MLEN_MAX (1 << 20)
-#define BLEN_MAX 8192
-#define HEIGHT_MAX 8
-#define BCNT_MAX (1 << HEIGHT_MAX)
-#define HLEN 2
+#include "hydra.h"
 
 __attribute__((visibility("default")))
 unsigned char message[MLEN_MAX];

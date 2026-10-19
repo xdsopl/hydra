@@ -7,12 +7,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define MLEN_MAX (1 << 20)
-#define BLEN_MAX 8192
-#define HEIGHT_MAX 8
-#define BCNT_MAX (1 << HEIGHT_MAX)
-#define HLEN 2
+#include "../module/hydra.h"
 
 extern unsigned char message[MLEN_MAX];
 extern unsigned char blocks[BLEN_MAX*BCNT_MAX];

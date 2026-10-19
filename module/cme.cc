@@ -9,11 +9,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include "prime_field.hh"
 #include "cauchy_prime_field_erasure_coding.hh"
 #include "mersenne_packing.hh"
-
-#define MLEN_MAX (1 << 20)
-#define BLEN_MAX 8192
-#define HEIGHT_MAX 8
-#define BCNT_MAX (1 << HEIGHT_MAX)
+#include "hydra.h"
 
 typedef CODE::PrimeField<uint32_t, 0x7FFFFFFF> M31;
 static CODE::MersenneRemapping<MLEN_MAX> remap;

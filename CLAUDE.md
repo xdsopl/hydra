@@ -29,3 +29,4 @@ Commit messages (match the existing history):
 - A short lowercase subject, no trailing period, under about 60 characters, saying what changed. Example: `moved block count computation out of encode function`.
 - No body unless the reason is not obvious from the diff.
 - No Co-Authored-By, Claude-Session or other trailers, and no links.
+- Author commits as `Claude <noreply@anthropic.com>`. Never use my name or email.

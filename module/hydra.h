@@ -12,3 +12,8 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define BCNT_MAX (1 << HEIGHT_MAX)
 #define HLEN 2
 
+static inline int message_capacity(int K, int plen)
+{
+	return (K * ((plen * 8) / 31) * 31 - 31) / 8;
+}
+

@@ -30,10 +30,9 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 	if (K < 1 || N < K)
 		return -1;
 	int block_values = (blen * 8) / 31;
-	int total_values = block_values * K;
-	if ((31 + mlen * 8 + 30) / 31 > total_values)
+	int capacity = message_capacity(K, blen);
+	if (mlen > capacity)
 		return -1;
-	int capacity = (total_values * 31 - 31) / 8;
 	for (int i = mlen; i < capacity; ++i)
 		message[i] = 0;
 	message_values[0] = remap.encode(message_values+1, message, capacity);
@@ -54,7 +53,7 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 	if (K < 1)
 		return -1;
 	int block_values = (blen * 8) / 31;
-	int capacity = (K * block_values * 31 - 31) / 8;
+	int capacity = message_capacity(K, blen);
 	if (capacity <= blen)
 		return -1;
 	int block_bits = block_values * 31;

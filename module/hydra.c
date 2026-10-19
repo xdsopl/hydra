@@ -83,7 +83,7 @@ int needed_blocks(int mlen, int blen, int dflag)
 		avail_values = (plen * 8) / 31;
 		if (avail_values < 1)
 			return -1;
-		if (K * avail_values * 31 >= 31 + mlen * 8)
+		if (message_capacity(K, plen) >= mlen)
 			return K;
 	}
 }
@@ -233,6 +233,6 @@ int decode_message(int blen)
 	}
 	if (cme_decode_message(message, blocks+HLEN, indices, K, plen, blen))
 		return -1;
-	return (K * ((plen * 8) / 31) * 31 - 31) / 8;
+	return message_capacity(K, plen);
 }
 

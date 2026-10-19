@@ -43,9 +43,10 @@ temp/cme.o: module/cme.cc module/hydra.h code_ref/cauchy_prime_field_erasure_cod
 	$(CXX) $(CXXFLAGS) $(CODE) -c -o $@ $<
 
 .PHONY: check
-check: temp/merkle_test temp/cme_test temp/hydra
+check: temp/merkle_test temp/cme_test temp/hydra_test temp/hydra
 	temp/merkle_test
 	temp/cme_test
+	temp/hydra_test
 	temp/hydra encode 256 0 README.md temp/check_a
 	printf X | dd of=temp/check_a031 bs=1 seek=40 conv=notrunc 2> /dev/null
 	temp/hydra decode temp/check_msg_a `ls -r temp/check_a*`
@@ -70,6 +71,9 @@ temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c b
 temp/cme_test: tests/cme_test.cc module/cme.cc module/hydra.h code_ref/cauchy_prime_field_erasure_coding.hh code_ref/mersenne_packing.hh code_ref/prime_field.hh
 	$(HOSTCXX) $(HOSTCXXFLAGS) $(CODE) -o $@ tests/cme_test.cc
 
+temp/hydra_test: tests/hydra_test.c module/hydra.c module/hydra.h module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h temp/host_cme.o
+	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tests/hydra_test.c module/hydra.c module/merkle.c blake2_ref/blake2s-ref.c temp/host_cme.o
+
 temp/hydra: tools/hydra.c module/hydra.c module/hydra.h module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h temp/host_cme.o
 	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tools/hydra.c module/hydra.c module/merkle.c blake2_ref/blake2s-ref.c temp/host_cme.o
 
@@ -79,5 +83,5 @@ temp/host_cme.o: module/cme.cc module/hydra.h code_ref/cauchy_prime_field_erasur
 .PHONY: clean
 
 clean:
-	rm -f temp/*.o temp/hydra.wasm temp/hydra temp/merkle_test temp/cme_test temp/check_*
+	rm -f temp/*.o temp/hydra.wasm temp/hydra temp/merkle_test temp/cme_test temp/hydra_test temp/check_*
 

@@ -62,6 +62,15 @@ function shuffle(list) {
 	}
 	return list;
 }
+function choices(n, k) {
+	if (k == 0)
+		return [[]];
+	if (n < k)
+		return [];
+	const without = choices(n - 1, k);
+	const with_last = choices(n - 1, k - 1).map(choice => choice.concat([n - 1]));
+	return without.concat(with_last);
+}
 function equal(a, b) {
 	if (!a || !b || a.length != b.length)
 		return false;
@@ -260,20 +269,16 @@ async function hello_world_tests() {
 		print_str("  the text does not fit into a single block of 128 bytes, so K = " + K + " and N = " + N);
 		for (const buffer of list)
 			describe_block(buffer);
-		let choices = 0, good = 0, data = null;
-		for (let i = 0; i < N; ++i) {
-			for (let j = i + 1; j < N; ++j) {
-				for (let k = j + 1; k < N; ++k) {
-					++choices;
-					data = decode([list[k], list[i], list[j]]);
-					if (starts_with(data, text))
-						++good;
-				}
-			}
+		const all = choices(N, K);
+		let good = 0, data = null;
+		for (const choice of all) {
+			data = decode(shuffle(choice.map(i => list[i])));
+			if (starts_with(data, text))
+				++good;
 		}
-		print_str("  " + good + " of " + choices + " choices of " + K + " out of " + N + " blocks gave back the text");
+		print_str("  " + good + " of " + all.length + " choices of " + K + " out of " + N + " blocks gave back the text, each in shuffled order");
 		print_str("  message after: " + (data ? to_text(data.subarray(0, text.length)) : "decode_message failed"));
-		return K == 3 && choices == good;
+		return K > 1 && all.length == good;
 	});
 	const longer = from_text("A longer text needs more blocks. Each block starts with a header byte holding K - 1 and the " +
 		"digest flag, and an index byte. Then comes the payload, then the siblings of the Merkle proof from the leaf " +

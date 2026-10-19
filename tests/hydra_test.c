@@ -19,6 +19,8 @@ int digest_message(int mlen);
 
 static unsigned char expect[32];
 static unsigned char before[32];
+static unsigned char encoded[BLEN_MAX*BCNT_MAX];
+static unsigned char original[MLEN_MAX];
 static int failures;
 static unsigned int seed = 1;
 
@@ -105,6 +107,51 @@ static void test_round_trip(int mlen, int blen, int dflag)
 	check(memcmp(digest, before, 32) != 0, "digest over the padding differs", len, blen, dflag);
 }
 
+static int decode_chosen(const int *chosen, int K, int mlen, int blen)
+{
+	for (int i = 0; i < K; ++i)
+		memcpy(blocks+blen*i, encoded+blen*chosen[i], blen);
+	memset(message, 255, mlen);
+	return decode_message(blen);
+}
+
+static int decoded_original(const int *chosen, int K, int mlen, int blen)
+{
+	if (decode_chosen(chosen, K, mlen, blen) < mlen)
+		return 0;
+	return !memcmp(message, original, mlen);
+}
+
+static void test_duplicates(int mlen, int blen, int dflag)
+{
+	int chosen[BCNT_MAX];
+	fill(message, mlen);
+	memcpy(original, message, mlen);
+	int N = encode_message(mlen, blen, dflag);
+	check(N > 0, "encode_message", mlen, blen, dflag);
+	if (N < 1)
+		return;
+	int K = (blocks[0] & 127) + 1;
+	check(K > 1, "message needs more than one block", mlen, blen, dflag);
+	if (K < 2)
+		return;
+	memcpy(encoded, blocks, blen * N);
+	for (int i = 0; i < K; ++i)
+		chosen[i] = N - 1 - i;
+	check(decoded_original(chosen, K, mlen, blen), "decode_message with K distinct blocks", mlen, blen, dflag);
+	chosen[K-1] = chosen[0];
+	check(decode_chosen(chosen, K, mlen, blen) == -1, "decode_message rejects last block repeating the first", mlen, blen, dflag);
+	chosen[K-1] = N - K;
+	chosen[1] = chosen[K-2];
+	check(decode_chosen(chosen, K, mlen, blen) == -1, "decode_message rejects a duplicate in the middle", mlen, blen, dflag);
+	for (int i = 0; i < K; ++i)
+		chosen[i] = 0;
+	check(decode_chosen(chosen, K, mlen, blen) == -1, "decode_message rejects K copies of one block", mlen, blen, dflag);
+	for (int i = 0; i < K; ++i)
+		chosen[i] = i;
+	check(decoded_original(chosen, K, mlen, blen), "decode_message works again after rejecting duplicates", mlen, blen, dflag);
+}
+
 int main(void)
 {
 	known_answers();
@@ -116,6 +163,9 @@ int main(void)
 	test_round_trip(5000, 512, 1);
 	test_round_trip(100000, 1024, 0);
 	test_round_trip(1029692, 8192, 0);
+	test_duplicates(1000, 256, 0);
+	test_duplicates(900, 256, 1);
+	test_duplicates(100000, 1024, 0);
 	if (failures) {
 		printf("hydra_test: %d failures\n", failures);
 		return 1;

@@ -8,6 +8,8 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include "hydra.h"
 
 __attribute__((visibility("default")))
+unsigned char digest[32];
+__attribute__((visibility("default")))
 unsigned char message[MLEN_MAX];
 __attribute__((visibility("default")))
 unsigned char blocks[BLEN_MAX*BCNT_MAX];
@@ -234,5 +236,15 @@ int decode_message(int blen)
 	if (cme_decode_message(message, blocks+HLEN, indices, K, plen, blen))
 		return -1;
 	return message_capacity(K, plen);
+}
+
+__attribute__((visibility("default")))
+int digest_message(int mlen)
+{
+	if (mlen < 1 || mlen > MLEN_MAX)
+		return -1;
+	if (merkle_digest_message(digest, message, mlen, 32))
+		return -1;
+	return 0;
 }
 

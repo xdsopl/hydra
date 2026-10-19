@@ -16,7 +16,7 @@ body { color: white; background-color: black; }
 const MLEN_MAX = 1 << 20;
 const BLEN_MAX = 8192;
 const BCNT_MAX = 256;
-let wasm, message, blocks, block;
+let wasm, digest, message, blocks, block;
 let passed = 0, failed = 0;
 
 function print_str(str, cls) {
@@ -139,7 +139,7 @@ function block_tag(buffer) {
 	return buffer.subarray(buffer.length - tag_length(buffer));
 }
 
-/* the whole API in three small wrappers */
+/* the whole API in four small wrappers */
 function encode(data, blen, dflag) {
 	message.set(data);
 	const N = wasm.encode_message(data.length, blen, dflag);
@@ -162,6 +162,12 @@ function decode(list) {
 	if (len < 0)
 		return null;
 	return message.slice(0, len);
+}
+function hash(data) {
+	message.set(data);
+	if (wasm.digest_message(data.length))
+		return null;
+	return digest.slice();
 }
 
 /* a receiver caches verified blocks by root and index until it has K of them */
@@ -310,6 +316,35 @@ function largest_message(blen, dflag) {
 	return low;
 }
 
+async function digest_tests() {
+	print_head("Message digest");
+	await test("digest_message with \"abc\" against the BLAKE2s-256 test vector", () => {
+		const expected = "508C5E8C327C14E2E1A72BA34EEB452F37458B209ED63A294D999B4C86675982";
+		const result = hash(from_text("abc"));
+		print_str("  digest_message(3) = " + (result ? 0 : -1));
+		print_str("  digest:   " + (result ? to_hex(result) : "none"));
+		print_str("  expected: " + expected);
+		return result != null && to_hex(result) == expected;
+	});
+	await test("digest_message before encoding and after decoding a random message, mlen = 5000, blen = 512, dflag = 1", () => {
+		const data = random_bytes(5000);
+		const before = hash(data);
+		const list = encode(data, 512, 1);
+		if (!before || !list)
+			return false;
+		const K = block_K(list[0]);
+		const decoded = decode(shuffle(list.slice()).slice(0, K));
+		if (!decoded)
+			return false;
+		print_str("  decode_message returned " + decoded.length + " bytes, the digest covers only the first " + data.length);
+		const after = hash(decoded.subarray(0, data.length));
+		print_hex("before", before);
+		print_hex("after ", after);
+		print_str("  short form of the first 7.5 bytes: " + to_hex(before).slice(0, 15));
+		return after != null && equal(before, after);
+	});
+}
+
 async function size_tests() {
 	print_head("How many blocks?");
 	await test("needed_blocks and total_blocks for many message and block lengths", () => {
@@ -384,6 +419,8 @@ async function argument_tests() {
 			["encode_message(100000, 64, 0)", "would need more than 128 blocks", () => wasm.encode_message(100000, 64, 0)],
 			["encode_message(100, 256, -1)", "digest flag must be 0 or 1", () => wasm.encode_message(100, 256, -1)],
 			["decode_message(0)", "no block", () => wasm.decode_message(0)],
+			["digest_message(0)", "empty message", () => wasm.digest_message(0)],
+			["digest_message(" + (MLEN_MAX + 1) + ")", "message too long", () => wasm.digest_message(MLEN_MAX + 1)],
 			["decode_message(" + (BLEN_MAX + 1) + ")", "block too long", () => wasm.decode_message(BLEN_MAX + 1)],
 		];
 		let ok = true;
@@ -664,6 +701,7 @@ async function goodbye_tests() {
 async function run_tests() {
 	const start = performance.now();
 	await hello_world_tests();
+	await digest_tests();
 	await size_tests();
 	await argument_tests();
 	await bit_flip_tests();
@@ -680,6 +718,7 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 	.then(obj => {
 		wasm = obj.instance.exports;
 		const buffer = wasm.memory.buffer;
+		digest = new Uint8Array(buffer, wasm.digest.value, 32);
 		message = new Uint8Array(buffer, wasm.message.value, MLEN_MAX);
 		blocks = new Uint8Array(buffer, wasm.blocks.value, BLEN_MAX * BCNT_MAX);
 		block = new Uint8Array(buffer, wasm.block.value, BLEN_MAX);

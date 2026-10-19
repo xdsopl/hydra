@@ -37,9 +37,10 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 	int total_values = block_values * K;
 	if ((31 + mlen * 8 + 30) / 31 > total_values)
 		return -1;
-	message_values[0] = remap.encode(message_values+1, message, mlen);
-	for (int i = (31 + mlen * 8 + 30) / 31; i < total_values; ++i)
-		message_values[i] = M31(0);
+	int capacity = (total_values * 31 - 31) / 8;
+	for (int i = mlen; i < capacity; ++i)
+		message[i] = 0;
+	message_values[0] = remap.encode(message_values+1, message, capacity);
 	for (int i = 0; i < N; ++i) {
 		int chunk_ident = K + i;
 		cme.encode(message_values, chunk_values, chunk_ident, block_values, K);

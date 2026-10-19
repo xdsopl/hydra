@@ -20,6 +20,7 @@ __attribute__((visibility("default")))
 unsigned char block[BLEN_MAX];
 static unsigned char hashes[32*2*BCNT_MAX];
 static unsigned char indices[BCNT_MAX];
+static unsigned char seen[BCNT_MAX];
 
 static int ilog2_floor(int x)
 {
@@ -220,12 +221,16 @@ int decode_message(int blen)
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
 		return -1;
+	memset(seen, 0, N);
 	for (int i = 0; i < K; ++i) {
 		if (blocks[i*blen] != blocks[0])
 			return -1;
 		if (blocks[i*blen+1] >= N)
 			return -1;
 		indices[i] = blocks[i*blen+1];
+		if (seen[indices[i]])
+			return -1;
+		seen[indices[i]] = 1;
 		if (merkle_verify_block(blocks+i*blen, height, HLEN + plen, dlen, indices[i]))
 			return -1;
 		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))

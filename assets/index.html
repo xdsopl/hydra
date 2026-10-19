@@ -427,7 +427,7 @@ async function argument_tests() {
 		}
 		return ok;
 	});
-	await test("decode_message with a corrupted block or blocks of two messages, blen = 512, dflag = 0", () => {
+	await test("decode_message with a corrupted block, a duplicate or blocks of two messages, blen = 512, dflag = 0", () => {
 		const list = encode(random_bytes(5000), 512, 0);
 		const other = encode(random_bytes(5000), 512, 0);
 		if (!list || !other)
@@ -439,10 +439,13 @@ async function argument_tests() {
 		damaged[K - 1] = corrupt(damaged[K - 1], 1);
 		const bad = decode(damaged);
 		print_str("  last of K blocks corrupted: decode_message = " + (bad ? bad.length : -1));
+		const doubled = list.slice(0, K - 1).concat([list[0]]);
+		const twice = decode(doubled);
+		print_str("  last of K blocks a duplicate of the first: decode_message = " + (twice ? twice.length : -1));
 		const mixed = list.slice(0, K - 1).concat([other[K]]);
 		const foreign = decode(mixed);
 		print_str("  last of K blocks from another message: decode_message = " + (foreign ? foreign.length : -1));
-		return good != null && bad == null && foreign == null;
+		return good != null && bad == null && twice == null && foreign == null;
 	});
 }
 

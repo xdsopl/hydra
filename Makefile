@@ -18,7 +18,10 @@ temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o tem
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 .PHONY: assets
-assets: assets/hydra.wasm.gz
+assets: assets/hydra.wasm assets/hydra.wasm.gz
+
+assets/hydra.wasm: temp/hydra.wasm
+	install -m 644 $< $@
 
 assets/hydra.wasm.gz: temp/hydra.wasm
 	gzip -n -c $< > $@

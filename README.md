@@ -110,7 +110,7 @@ if (wasm.verify_block(blen) == 0) {
 
 ## 5. Building & Testing
 * **`make`:** builds `temp/hydra.wasm` with clang for `wasm32`.
-* **`make assets`:** compresses it to `assets/hydra.wasm.gz` for the web page.
+* **`make assets`:** copies it to `assets/hydra.wasm` and compresses it to `assets/hydra.wasm.gz` for the web page. Any static web server can serve the plain module, the web server below prefers the compressed one.
 * **`make webserver`:** serves `assets/` on port 8080. Open `index.html` to run the tests and examples in the browser.
 * **`make check`:** runs the native tests in `tests/` and round trips through the command line tool:
   ```

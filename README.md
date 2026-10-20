@@ -65,7 +65,7 @@ The WebAssembly module exports a few fixed buffers and six functions. All functi
 * **`digest_message(mlen)`:** writes the plain 32-byte Blake2s hash of the first `mlen` bytes of `message` into `digest`. Truncate it for shorter identifiers instead of asking for a shorter hash.
 
 ### Sending
-Write the message into `message`, call `encode_message(mlen, blen, dflag)` and send the $N$ blocks of `blen` bytes from `blocks`. Any $K$ of them are enough to get the message back.
+Write the message into `message`, call `encode_message(mlen, blen, dflag)` and send the $N$ blocks of `blen` bytes from `blocks`. Any $K$ of them are enough to get the message back. The sender does not have to send all $N$: $K$ plus a margin for the expected losses is enough, and more blocks can follow later for receivers that are still missing some. `needed_blocks` and `total_blocks` tell you $K$ and $N$ before encoding, so a transmission can be planned up front.
 
 ### Receiving
 Copy each received block into `block` and drop it if `verify_block(blen)` fails. Cache the rest by root and index as described above. A block with $K = 1$ holds the whole message on its own. Once $K$ distinct blocks of a root are there, copy them one after another into `blocks` and call `decode_message(blen)`.

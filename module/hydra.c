@@ -67,9 +67,9 @@ int needed_blocks(int mlen, int blen, int dflag)
 		return -1;
 	if (dflag != 0 && dflag != 1)
 		return -1;
-	int dlen = dflag ? 32 : 16;
-	if (mlen <= blen - 1 - (dlen == 32 ? 8 : 4))
+	if (mlen <= blen - 1 - (dflag ? 8 : 4))
 		return 1;
+	int dlen = dflag ? 32 : 16;
 	int plen = payload_length(2, blen, dlen);
 	if (plen < 0)
 		return -1;
@@ -120,16 +120,16 @@ static int verify_single(unsigned char *buf, int blen)
 	return 0;
 }
 
-static int encode_single(int mlen, int blen, int dlen)
+static int encode_single(int mlen, int blen, int dflag)
 {
 	if (blen < 1 || blen > BLEN_MAX)
 		return -1;
-	if (dlen != 16 && dlen != 32)
+	if (dflag != 0 && dflag != 1)
 		return -1;
-	int hlen = dlen == 32 ? 8 : 4;
+	int hlen = dflag ? 8 : 4;
 	if (mlen > blen - 1 - hlen)
 		return -1;
-	blocks[0] = dlen == 32 ? 128 : 0;
+	blocks[0] = dflag ? 128 : 0;
 	memcpy(blocks+1, message, mlen);
 	memset(blocks+1+mlen, 0, blen - 1 - hlen - mlen);
 	if (merkle_digest_message(blocks+blen-hlen, blocks, blen - hlen, hlen))
@@ -177,12 +177,12 @@ int encode_message(int mlen, int blen, int dflag)
 	if (K < 0)
 		return -1;
 	int N = total_blocks(K);
-	int dlen = dflag ? 32 : 16;
 	if (K == 1) {
-		if (encode_single(mlen, blen, dlen))
+		if (encode_single(mlen, blen, dflag))
 			return -1;
 		return N;
 	}
+	int dlen = dflag ? 32 : 16;
 	int height = needed_height(K);
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
@@ -191,7 +191,7 @@ int encode_message(int mlen, int blen, int dflag)
 	if (ret)
 		return ret;
 	for (int i = 0; i < N; ++i) {
-		blocks[i*blen] = (K - 1) | (dlen == 32 ? 128 : 0);
+		blocks[i*blen] = (K - 1) | (dflag ? 128 : 0);
 		blocks[i*blen+1] = i;
 	}
 	if (merkle_digest_blocks(hashes, blocks, height, HLEN + plen, blen, dlen))

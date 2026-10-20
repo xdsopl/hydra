@@ -71,7 +71,7 @@ static int decode(const char *output, char **names, int count)
 	int blen = 0, K = 0, got = 0;
 	for (int i = 0; i < count && (!K || got < K); ++i) {
 		int len = read_file(block, BLEN_MAX, names[i]);
-		if (len <= HLEN) {
+		if (len <= 2) {
 			fprintf(stderr, "skipping %s: could not read block\n", names[i]);
 			continue;
 		}

@@ -52,7 +52,7 @@ static int payload_length(int height, int blen, int dlen)
 		return -1;
 	if (dlen != 16 && dlen != 32)
 		return -1;
-	int plen = blen - HLEN - dlen * (height + 1);
+	int plen = blen - 2 - dlen * (height + 1);
 	if (plen < 1)
 		return -1;
 	return plen;
@@ -150,7 +150,7 @@ static int decode_single(int blen)
 __attribute__((visibility("default")))
 int verify_block(int blen)
 {
-	if (blen <= HLEN || blen > BLEN_MAX)
+	if (blen <= 2 || blen > BLEN_MAX)
 		return -1;
 	int K = (block[0] & 127) + 1;
 	if (K == 1)
@@ -165,7 +165,7 @@ int verify_block(int blen)
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
 		return -1;
-	if (merkle_verify_block(block, height, HLEN + plen, dlen, block[1]))
+	if (merkle_verify_block(block, height, 2 + plen, dlen, block[1]))
 		return -1;
 	return 0;
 }
@@ -187,17 +187,17 @@ int encode_message(int mlen, int blen, int dflag)
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
 		return -1;
-	int ret = cme_encode_message(blocks+HLEN, message, K, N, mlen, plen, blen);
+	int ret = cme_encode_message(blocks+2, message, K, N, mlen, plen, blen);
 	if (ret)
 		return ret;
 	for (int i = 0; i < N; ++i) {
 		blocks[i*blen] = (K - 1) | (dflag ? 128 : 0);
 		blocks[i*blen+1] = i;
 	}
-	if (merkle_digest_blocks(hashes, blocks, height, HLEN + plen, blen, dlen))
+	if (merkle_digest_blocks(hashes, blocks, height, 2 + plen, blen, dlen))
 		return -1;
 	for (int i = 0; i < N; ++i)
-		if (merkle_extract_block(blocks, hashes, height, HLEN + plen, blen, dlen, i))
+		if (merkle_extract_block(blocks, hashes, height, 2 + plen, blen, dlen, i))
 			return -1;
 	return N;
 }
@@ -205,7 +205,7 @@ int encode_message(int mlen, int blen, int dflag)
 __attribute__((visibility("default")))
 int decode_message(int blen)
 {
-	if (blen <= HLEN || blen > BLEN_MAX)
+	if (blen <= 2 || blen > BLEN_MAX)
 		return -1;
 	int K = (blocks[0] & 127) + 1;
 	if (K == 1)
@@ -228,12 +228,12 @@ int decode_message(int blen)
 		if (seen[indices[i]])
 			return -1;
 		seen[indices[i]] = 1;
-		if (merkle_verify_block(blocks+i*blen, height, HLEN + plen, dlen, indices[i]))
+		if (merkle_verify_block(blocks+i*blen, height, 2 + plen, dlen, indices[i]))
 			return -1;
 		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))
 			return -1;
 	}
-	if (cme_decode_message(message, blocks+HLEN, indices, K, plen, blen))
+	if (cme_decode_message(message, blocks+2, indices, K, plen, blen))
 		return -1;
 	return message_capacity(K, plen);
 }

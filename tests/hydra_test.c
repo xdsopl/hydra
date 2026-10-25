@@ -152,6 +152,25 @@ static void test_duplicates(int mlen, int blen, int dflag)
 	check(decoded_original(chosen, K, mlen, blen), "decode_message works again after rejecting duplicates", mlen, blen, dflag);
 }
 
+static void test_regenerate(int mlen, int blen, int dflag)
+{
+	fill(message, mlen);
+	int N = encode_message(mlen, blen, dflag);
+	check(N > 0, "encode_message", mlen, blen, dflag);
+	if (N < 1)
+		return;
+	memcpy(encoded, blocks, blen * N);
+	int K = (blocks[0] & 127) + 1;
+	memmove(blocks, blocks+blen*(N-K), blen * K);
+	memset(message, 255, mlen);
+	int len = decode_message(blen);
+	check(len >= mlen, "decode_message", mlen, blen, dflag);
+	if (len < mlen)
+		return;
+	check(encode_message(len, blen, blocks[0] >> 7) == N, "encode_message with decoded length gives same N", len, blen, dflag);
+	check(!memcmp(blocks, encoded, blen * N), "encode_message with decoded length gives same blocks", len, blen, dflag);
+}
+
 int main(void)
 {
 	known_answers();
@@ -166,6 +185,11 @@ int main(void)
 	test_duplicates(1000, 256, 0);
 	test_duplicates(900, 256, 1);
 	test_duplicates(100000, 1024, 0);
+	test_regenerate(12, 32, 1);
+	test_regenerate(1000, 256, 0);
+	test_regenerate(900, 256, 1);
+	test_regenerate(100000, 1024, 0);
+	test_regenerate(1029692, 8192, 0);
 	if (failures) {
 		printf("hydra_test: %d failures\n", failures);
 		return 1;

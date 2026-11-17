@@ -12,11 +12,11 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include "hydra.h"
 
 typedef CODE::PrimeField<uint32_t, 0x7FFFFFFF> M31;
-static CODE::MersenneRemapping<MLEN_MAX> remap;
+static CODE::MersenneRemapping<CAPACITY_MAX> remap;
 static CODE::CauchyPrimeFieldErasureCoding<M31> cme;
-static M31 message_values[(31 + MLEN_MAX * 8 + 30) / 31];
+static M31 message_values[(31 + CAPACITY_MAX * 8 + 30) / 31];
 static M31 chunk_values[(BLEN_MAX * 8) / 31];
-static M31 received_values[(31 + MLEN_MAX * 8 + 30) / 31];
+static M31 received_values[(31 + CAPACITY_MAX * 8 + 30) / 31];
 static int block_ids[K_MAX];
 
 extern "C" {
@@ -29,7 +29,7 @@ int cme_prepare_message(unsigned char *message, int K, int mlen, int blen)
 	if (block_values < 1)
 		return -1;
 	int capacity = message_capacity(K, blen);
-	if (capacity > MLEN_MAX)
+	if (capacity > CAPACITY_MAX)
 		return -1;
 	if (mlen < 1 || mlen > capacity)
 		return -1;
@@ -69,7 +69,7 @@ int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int
 	return 0;
 }
 
-int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen, int stride)
+int cme_decode_message(unsigned char *message, unsigned char *blocks, int *indices, int K, int blen, int stride)
 {
 	if (stride < blen)
 		return -1;
@@ -79,7 +79,7 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 	if (block_values < 1)
 		return -1;
 	int capacity = message_capacity(K, blen);
-	if (capacity < 1 || capacity > MLEN_MAX)
+	if (capacity < 1 || capacity > CAPACITY_MAX)
 		return -1;
 	int block_bits = block_values * 31;
 	int block_bytes = (block_bits + 7) / 8;

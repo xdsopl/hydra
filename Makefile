@@ -45,22 +45,22 @@ check: temp/merkle_test temp/cme_test temp/hydra_test temp/hydra
 	temp/cme_test
 	temp/hydra_test
 	temp/hydra encode 256 0 README.md temp/check_a
-	printf X | dd of=temp/check_a031 bs=1 seek=40 conv=notrunc 2> /dev/null
+	printf X | dd of=`ls temp/check_a* | tail -n 1` bs=1 seek=40 conv=notrunc 2> /dev/null
 	temp/hydra decode temp/check_msg_a `ls -r temp/check_a*`
 	head -c `wc -c < README.md` temp/check_msg_a | cmp README.md -
 	temp/hydra encode 512 1 README.md temp/check_b
 	temp/hydra decode temp/check_msg_b `ls -r temp/check_b*`
 	head -c `wc -c < README.md` temp/check_msg_b | cmp README.md -
 	temp/hydra encode 1024 0 LICENSE temp/check_c
-	temp/hydra decode temp/check_msg_c temp/check_c000
+	temp/hydra decode temp/check_msg_c temp/check_c00000
 	head -c `wc -c < LICENSE` temp/check_msg_c | cmp LICENSE -
-	printf X | dd of=temp/check_c000 bs=1 seek=40 conv=notrunc 2> /dev/null
-	! temp/hydra decode temp/check_msg_c temp/check_c000 2> /dev/null
+	printf X | dd of=temp/check_c00000 bs=1 seek=40 conv=notrunc 2> /dev/null
+	! temp/hydra decode temp/check_msg_c temp/check_c00000 2> /dev/null
 	temp/hydra encode 1024 1 LICENSE temp/check_d
-	temp/hydra decode temp/check_msg_d temp/check_d000
+	temp/hydra decode temp/check_msg_d temp/check_d00000
 	head -c `wc -c < LICENSE` temp/check_msg_d | cmp LICENSE -
-	printf X | dd of=temp/check_d000 bs=1 seek=40 conv=notrunc 2> /dev/null
-	! temp/hydra decode temp/check_msg_d temp/check_d000 2> /dev/null
+	printf X | dd of=temp/check_d00000 bs=1 seek=40 conv=notrunc 2> /dev/null
+	! temp/hydra decode temp/check_msg_d temp/check_d00000 2> /dev/null
 
 temp/merkle_test: tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h
 	$(HOSTCC) $(HOSTFLAGS) $(BLAKE2) -o $@ tests/merkle_test.c module/merkle.c blake2_ref/blake2s-ref.c

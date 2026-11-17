@@ -8,7 +8,8 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 #define MLEN_MAX (1 << 20)
 #define BLEN_MAX 8192
-#define HEIGHT_MAX 8
+#define CAPACITY_MAX (MLEN_MAX + BLEN_MAX)
+#define HEIGHT_MAX 16
 #define BCNT_MAX (1 << HEIGHT_MAX)
 #define K_MAX 1024
 #define N_MAX (1 << 16)

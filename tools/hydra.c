@@ -9,13 +9,17 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include <string.h>
 #include "../module/hydra.h"
 
-extern unsigned char message[MLEN_MAX];
-extern unsigned char blocks[BLEN_MAX*BCNT_MAX];
+extern unsigned char message[CAPACITY_MAX];
+extern unsigned char blocks[];
 extern unsigned char block[BLEN_MAX];
 static unsigned char seen[BCNT_MAX];
 
+int needed_blocks(int mlen, int blen, int height, int dflag);
+int block_length(int mlen, int K, int height, int dflag);
+int useful_height(int K);
+int encode_message(int mlen, int blen, int height, int dflag);
+int encode_block(int index);
 int verify_block(int blen);
-int encode_message(int mlen, int blen, int dflag);
 int decode_message(int blen);
 
 static int read_file(unsigned char *buf, int max, const char *name)
@@ -42,27 +46,50 @@ static int write_file(const unsigned char *buf, int len, const char *name)
 	return -ret;
 }
 
-static int encode(int blen, int dflag, const char *input, const char *prefix)
+static int encode(int budget, int dflag, const char *input, const char *prefix, int height)
 {
 	int mlen = read_file(message, MLEN_MAX, input);
-	if (mlen < 0) {
+	if (mlen < 1) {
 		fprintf(stderr, "could not read message from %s\n", input);
 		return 1;
 	}
-	int N = encode_message(mlen, blen, dflag);
-	if (N < 0) {
-		fprintf(stderr, "could not encode mlen %d, blen %d, dflag %d\n", mlen, blen, dflag);
+	int K = -1;
+	if (height) {
+		K = needed_blocks(mlen, budget, height, dflag);
+	} else {
+		int best = 0, best_K = 0;
+		for (height = 1; height <= HEIGHT_MAX; ++height) {
+			K = needed_blocks(mlen, budget, height, dflag);
+			if (K > 0 && (!best || (1 << height) * best_K > (1 << best) * K)) {
+				best = height;
+				best_K = K;
+			}
+			if (K > 0 && useful_height(K) <= height)
+				break;
+		}
+		if (height > HEIGHT_MAX && best) {
+			height = best;
+			K = needed_blocks(mlen, budget, height, dflag);
+		}
+	}
+	if (K < 1) {
+		fprintf(stderr, "could not encode mlen %d, blen %d, dflag %d\n", mlen, budget, dflag);
 		return 1;
 	}
-	for (int i = 0; i < N; ++i) {
+	int blen = block_length(mlen, K, height, dflag);
+	if (blen < 1 || encode_message(mlen, blen, height, dflag) != K) {
+		fprintf(stderr, "could not encode mlen %d, blen %d, dflag %d\n", mlen, budget, dflag);
+		return 1;
+	}
+	for (int i = 0; i < 1 << height; ++i) {
 		char name[4096];
-		snprintf(name, sizeof(name), "%s%03d", prefix, i);
-		if (write_file(blocks+i*blen, blen, name)) {
+		snprintf(name, sizeof(name), "%s%05d", prefix, i);
+		if (encode_block(i) != blen || write_file(block, blen, name)) {
 			fprintf(stderr, "could not write block to %s\n", name);
 			return 1;
 		}
 	}
-	fprintf(stderr, "K = %d, N = %d\n", (blocks[0] & 127) + 1, N);
+	fprintf(stderr, "K = %d, N = %d, blen = %d\n", K, 1 << height, blen);
 	return 0;
 }
 
@@ -71,7 +98,7 @@ static int decode(const char *output, char **names, int count)
 	int blen = 0, K = 0, got = 0;
 	for (int i = 0; i < count && (!K || got < K); ++i) {
 		int len = read_file(block, BLEN_MAX, names[i]);
-		if (len <= 2) {
+		if (len < 4) {
 			fprintf(stderr, "skipping %s: could not read block\n", names[i]);
 			continue;
 		}
@@ -81,23 +108,20 @@ static int decode(const char *output, char **names, int count)
 		}
 		if (!blen) {
 			blen = len;
-			K = (block[0] & 127) + 1;
+			K = ((block[2] | block[3] << 8) & 1023) + 1;
 			memcpy(blocks, block, blen);
 		}
-		if (len != blen || block[0] != blocks[0]) {
+		int dlen = blocks[3] & 128 ? 32 : 16;
+		if (len != blen || memcmp(block+2, blocks+2, 2) || memcmp(block+blen-dlen, blocks+blen-dlen, dlen)) {
 			fprintf(stderr, "skipping %s: from another message\n", names[i]);
 			continue;
 		}
-		int dlen = blocks[0] & 128 ? 32 : 16;
-		if (K > 1 && memcmp(block+blen-dlen, blocks+blen-dlen, dlen)) {
-			fprintf(stderr, "skipping %s: from another message\n", names[i]);
+		int index = block[0] | block[1] << 8;
+		if (seen[index]) {
+			fprintf(stderr, "skipping %s: duplicate index %d\n", names[i], index);
 			continue;
 		}
-		if (seen[block[1]]) {
-			fprintf(stderr, "skipping %s: duplicate index %d\n", names[i], block[1]);
-			continue;
-		}
-		seen[block[1]] = 1;
+		seen[index] = 1;
 		memcpy(blocks+got*blen, block, blen);
 		++got;
 	}
@@ -119,11 +143,11 @@ static int decode(const char *output, char **names, int count)
 
 int main(int argc, char **argv)
 {
-	if (argc == 6 && !strcmp(argv[1], "encode"))
-		return encode(atoi(argv[2]), atoi(argv[3]), argv[4], argv[5]);
+	if ((argc == 6 || argc == 7) && !strcmp(argv[1], "encode"))
+		return encode(atoi(argv[2]), atoi(argv[3]), argv[4], argv[5], argc == 7 ? atoi(argv[6]) : 0);
 	if (argc >= 4 && !strcmp(argv[1], "decode"))
 		return decode(argv[2], argv+3, argc - 3);
-	fprintf(stderr, "usage: %s encode BLEN DFLAG MESSAGE PREFIX\n", argv[0]);
+	fprintf(stderr, "usage: %s encode BLEN DFLAG MESSAGE PREFIX [HEIGHT]\n", argv[0]);
 	fprintf(stderr, "       %s decode MESSAGE BLOCK...\n", argv[0]);
 	return 1;
 }

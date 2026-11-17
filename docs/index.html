@@ -15,7 +15,10 @@ body { color: white; background-color: black; }
 <script>
 const MLEN_MAX = 1 << 20;
 const BLEN_MAX = 8192;
-const BCNT_MAX = 256;
+const CAPACITY_MAX = MLEN_MAX + BLEN_MAX;
+const K_MAX = 1024;
+const HEIGHT_MAX = 16;
+const BLOCKS_LEN = CAPACITY_MAX + 8 + K_MAX * (8 + 32 * (HEIGHT_MAX + 1));
 let wasm, digest, message, blocks, block;
 let passed = 0, failed = 0;
 
@@ -121,33 +124,68 @@ async function test(what, func) {
 }
 
 /* what the header and the tail of a block tell us */
-function block_K(buffer) {
-	return (buffer[0] & 127) + 1;
-}
-function block_dflag(buffer) {
-	return buffer[0] >> 7;
+function block_header(buffer) {
+	return (buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24) >>> 0;
 }
 function block_index(buffer) {
-	return block_K(buffer) == 1 ? 0 : buffer[1];
+	return block_header(buffer) & 65535;
+}
+function block_K(buffer) {
+	return (block_header(buffer) >>> 16 & 1023) + 1;
+}
+function block_height(buffer) {
+	return (block_header(buffer) >>> 26 & 15) + 1;
+}
+function block_dflag(buffer) {
+	return block_header(buffer) >>> 31;
 }
 function tag_length(buffer) {
-	if (block_K(buffer) == 1)
-		return block_dflag(buffer) ? 8 : 4;
 	return block_dflag(buffer) ? 32 : 16;
 }
 function block_tag(buffer) {
 	return buffer.subarray(buffer.length - tag_length(buffer));
 }
 
+function plan(mlen, budget, dflag, height) {
+	let K = -1;
+	if (height) {
+		K = wasm.needed_blocks(mlen, budget, height, dflag);
+	} else {
+		let best = 0, best_K = 0;
+		for (height = 1; height <= HEIGHT_MAX; ++height) {
+			K = wasm.needed_blocks(mlen, budget, height, dflag);
+			if (K > 0 && (!best || (1 << height) * best_K > (1 << best) * K)) {
+				best = height;
+				best_K = K;
+			}
+			if (K > 0 && wasm.useful_height(K) <= height)
+				break;
+		}
+		if (height > HEIGHT_MAX && best) {
+			height = best;
+			K = wasm.needed_blocks(mlen, budget, height, dflag);
+		}
+	}
+	if (K < 1)
+		return null;
+	const blen = wasm.block_length(mlen, K, height, dflag);
+	if (blen < 1)
+		return null;
+	return { K: K, N: 1 << height, height: height, blen: blen };
+}
+
 /* the whole API in four small wrappers */
-function encode(data, blen, dflag) {
+function encode(data, budget, dflag, height) {
 	message.set(data);
-	const N = wasm.encode_message(data.length, blen, dflag);
-	if (N < 0)
+	const p = plan(data.length, budget, dflag, height);
+	if (!p || wasm.encode_message(data.length, p.blen, p.height, dflag) != p.K)
 		return null;
 	const list = [];
-	for (let i = 0; i < N; ++i)
-		list.push(blocks.slice(i * blen, (i + 1) * blen));
+	for (let i = 0; i < p.N; ++i) {
+		if (wasm.encode_block(i) != p.blen)
+			return null;
+		list.push(block.slice(0, p.blen));
+	}
 	return list;
 }
 function verify(buffer) {
@@ -209,23 +247,14 @@ class Receiver {
 }
 
 function describe_block(buffer) {
-	const K = block_K(buffer);
-	const blen = buffer.length;
-	if (K == 1) {
-		const hlen = tag_length(buffer);
-		print_str("  header byte " + to_hex(buffer.subarray(0, 1)) + ": K - 1 = 0, digest_flag = " + block_dflag(buffer));
-		print_hex("payload", buffer.subarray(1, blen - hlen));
-		print_hex("hash   ", buffer.subarray(blen - hlen));
-		return;
-	}
 	const dlen = tag_length(buffer);
-	const height = Math.log2(wasm.total_blocks(K));
-	const plen = blen - 2 - dlen * (height + 1);
-	print_str("  block " + block_index(buffer) + ": header byte " + to_hex(buffer.subarray(0, 1)) +
-		" (K - 1 = " + (K - 1) + ", digest_flag = " + block_dflag(buffer) + "), index byte " + to_hex(buffer.subarray(1, 2)));
-	print_hex("  payload ", buffer.subarray(2, 2 + plen));
+	const height = block_height(buffer);
+	const plen = buffer.length - 4 - dlen * (height + 1);
+	print_str("  block " + block_index(buffer) + ": header " + to_hex(buffer.subarray(0, 4)) + " (index = " + block_index(buffer) +
+		", K - 1 = " + (block_K(buffer) - 1) + ", height - 1 = " + (height - 1) + ", hash flag = " + block_dflag(buffer) + ")");
+	print_hex("  payload ", buffer.subarray(4, 4 + plen));
 	for (let i = 0; i < height; ++i)
-		print_hex("  sibling " + i, buffer.subarray(2 + plen + i * dlen, 2 + plen + (i + 1) * dlen));
+		print_hex("  sibling " + i, buffer.subarray(4 + plen + i * dlen, 4 + plen + (i + 1) * dlen));
 	print_hex("  root    ", block_tag(buffer));
 }
 
@@ -233,46 +262,51 @@ async function hello_world_tests() {
 	print_head("Hello World!");
 	const hello = from_text("Hello World!");
 	for (const dflag of [0, 1]) {
-		const blen = 32;
-		await test("encode_message and decode_message with \"Hello World!\", blen = " + blen + ", dflag = " + dflag, () => {
+		const budget = 200;
+		await test("encode_message and decode_message with \"Hello World!\", a budget of " + budget + " bytes, dflag = " + dflag, () => {
 			print_str("  message before: " + to_text(hello));
-			const K = wasm.needed_blocks(hello.length, blen, dflag);
-			const N = wasm.total_blocks(K);
-			print_str("  needed_blocks(" + hello.length + ", " + blen + ", " + dflag + ") = " + K + ", total_blocks(" + K + ") = " + N);
-			const list = encode(hello, blen, dflag);
+			const p = plan(hello.length, budget, dflag);
+			if (!p)
+				return false;
+			print_str("  needed_blocks(" + hello.length + ", " + budget + ", " + p.height + ", " + dflag + ") = " + p.K +
+				", useful_height(" + p.K + ") = " + wasm.useful_height(p.K) + ", so N = " + p.N);
+			print_str("  block_length(" + hello.length + ", " + p.K + ", " + p.height + ", " + dflag + ") = " + p.blen +
+				", the remaining " + (budget - p.blen) + " bytes of the budget are free for other things");
+			const list = encode(hello, budget, dflag);
 			if (!list)
 				return false;
-			print_str("  encode_message(" + hello.length + ", " + blen + ", " + dflag + ") = " + list.length);
-			describe_block(list[0]);
-			print_str("  verify_block(" + blen + ") = " + (verify(list[0]) ? 0 : -1));
-			const data = decode(list);
+			print_str("  encode_message(" + hello.length + ", " + p.blen + ", " + p.height + ", " + dflag + ") = " + p.K + ", then encode_block for each of the " + list.length + " blocks");
+			describe_block(list[5]);
+			print_str("  verify_block(" + p.blen + ") = " + (verify(list[5]) ? 0 : -1));
+			const data = decode([list[5]]);
 			if (!data)
 				return false;
-			print_str("  decode_message(" + blen + ") = " + data.length + " bytes, the first " + hello.length + " are our message");
+			print_str("  decode_message(" + p.blen + ") = " + data.length + " bytes from block 5 alone, the first " + hello.length + " are our message");
 			print_str("  message after: " + to_text(data.subarray(0, hello.length)));
-			return K == 1 && N == 1 && list.length == 1 && verify(list[0]) && starts_with(data, hello);
+			return p.K == 1 && list.length == 16 && verify(list[5]) && starts_with(data, hello);
 		});
 	}
-	await test("a single bit flip in a \"Hello World!\" block, blen = 32, dflag = 0", () => {
-		const bad = flip_bit(encode(hello, 32, 0)[0], 8 * 3 + 5);
-		print_str("  flipped bit 5 of byte 3");
+	await test("a single bit flip in a \"Hello World!\" block, dflag = 0", () => {
+		const good = encode(hello, 160, 0)[0];
+		const bad = flip_bit(good, 8 * 6 + 5);
+		print_str("  flipped bit 5 of byte 6");
 		print_hex("block", bad);
 		const verified = verify(bad);
-		print_str("  verify_block(32) = " + (verified ? 0 : -1));
+		print_str("  verify_block(" + bad.length + ") = " + (verified ? 0 : -1));
 		const data = decode([bad]);
-		print_str("  decode_message(32) = " + (data ? data.length : -1));
+		print_str("  decode_message(" + bad.length + ") = " + (data ? data.length : -1));
 		return !verified && data == null;
 	});
 	const text = from_text("HYDRA cuts a message into N blocks. Any K of them are enough to get the message back, " +
 		"and every block carries a proof, so a damaged block gets dropped instead of spoiling the result.");
-	await test("a short text spread over several blocks, decoded from every choice of K blocks, blen = 128, dflag = 0", () => {
+	await test("a short text spread over several blocks of a small tree, decoded from every choice of K blocks, budget = 128, height = 3, dflag = 0", () => {
 		print_str("  message before: " + to_text(text));
-		const list = encode(text, 128, 0);
+		const list = encode(text, 128, 0, 3);
 		if (!list)
 			return false;
 		const K = block_K(list[0]);
 		const N = list.length;
-		print_str("  the text does not fit into a single block of 128 bytes, so K = " + K + " and N = " + N);
+		print_str("  the text does not fit into a single block of 128 bytes, so K = " + K + " and N = " + N + " blocks of " + list[0].length + " bytes");
 		for (const buffer of list)
 			describe_block(buffer);
 		const all = choices(N, K);
@@ -286,10 +320,10 @@ async function hello_world_tests() {
 		print_str("  message after: " + (data ? to_text(data.subarray(0, text.length)) : "decode_message failed"));
 		return K > 1 && all.length == good;
 	});
-	const longer = from_text("A longer text needs more blocks. Each block starts with a header byte holding K - 1 and the " +
-		"digest flag, and an index byte. Then comes the payload, then the siblings of the Merkle proof from the leaf " +
-		"upwards, and last the root. The root identifies the message, so blocks of many messages can share one channel.");
-	await test("a longer text with most of the blocks lost, blen = 256, dflag = 1", () => {
+	const longer = from_text("A longer text needs more blocks. Each block starts with a four byte header holding the index, " +
+		"K - 1, the height of the tree and the hash flag. Then comes the payload, then the siblings of the Merkle proof from " +
+		"the leaf upwards, and last the root. The root identifies the encoding, so blocks of many messages can share one channel.");
+	await test("a longer text with most of the blocks lost, budget = 256, dflag = 1", () => {
 		print_str("  message before: " + to_text(longer));
 		const list = encode(longer, 256, 1);
 		if (!list)
@@ -304,11 +338,11 @@ async function hello_world_tests() {
 	});
 }
 
-function largest_message(blen, dflag) {
+function largest_message(budget, dflag) {
 	let low = 0, high = MLEN_MAX;
 	while (low < high) {
 		const mid = Math.ceil((low + high) / 2);
-		if (wasm.needed_blocks(mid, blen, dflag) > 0)
+		if (plan(mid, budget, dflag))
 			low = mid;
 		else
 			high = mid - 1;
@@ -326,7 +360,7 @@ async function digest_tests() {
 		print_str("  expected: " + expected);
 		return result != null && to_hex(result) == expected;
 	});
-	await test("digest_message before encoding and after decoding a random message, mlen = 5000, blen = 512, dflag = 1", () => {
+	await test("digest_message before encoding and after decoding a random message, mlen = 5000, budget = 512, dflag = 1", () => {
 		const data = random_bytes(5000);
 		const before = hash(data);
 		const list = encode(data, 512, 1);
@@ -347,55 +381,51 @@ async function digest_tests() {
 
 async function size_tests() {
 	print_head("How many blocks?");
-	await test("needed_blocks and total_blocks for many message and block lengths", () => {
+	await test("needed_blocks, useful_height and block_length for many message lengths and budgets", () => {
 		let ok = true;
-		for (const blen of [64, 256, 1024, 8192]) {
+		for (const budget of [128, 256, 1024, 8192]) {
 			for (const dflag of [0, 1]) {
-				let line = "  blen = " + blen + ", dflag = " + dflag + ":";
+				let line = "  budget = " + budget + ", dflag = " + dflag + ":";
 				for (const mlen of [1, 12, 100, 1000, 10000, 100000, MLEN_MAX]) {
-					const K = wasm.needed_blocks(mlen, blen, dflag);
-					const N = wasm.total_blocks(K);
-					line += " " + mlen + " → " + (K < 0 ? "too big" : K + " of " + N) + ",";
-					if (K > 0)
-						ok = ok && K <= N && N <= BCNT_MAX && (K == 1) == (N == 1);
-					else
-						ok = ok && N == -1;
+					const p = plan(mlen, budget, dflag);
+					line += " " + mlen + " → " + (p ? p.K + " of " + p.N + " in " + p.blen : "too big") + ",";
+					if (p)
+						ok = ok && p.K <= p.N && p.blen <= budget && wasm.needed_blocks(mlen, p.blen, p.height, dflag) == p.K;
 				}
 				print_str(line.slice(0, -1));
 			}
 		}
 		return ok;
 	});
-	await test("total_blocks for K = 1 to 128", () => {
+	await test("useful_height for K = 1 to " + K_MAX, () => {
 		let ok = true;
 		let line = "  ";
 		let last = 0;
-		for (let K = 1; K <= 128; ++K) {
-			const N = wasm.total_blocks(K);
-			if (N != last)
-				line += "K ≥ " + K + " → N = " + N + ", ";
-			last = N;
-			ok = ok && N >= 2 * K - (K == 1 ? 1 : 0);
+		for (let K = 1; K <= K_MAX; ++K) {
+			const height = wasm.useful_height(K);
+			if (height != last)
+				line += "K ≥ " + K + " → N = " + (1 << height) + ", ";
+			last = height;
+			ok = ok && (1 << height) >= 16 * K && (1 << height) < 32 * K;
 		}
 		print_str(line.slice(0, -2));
-		print_str("  total_blocks(129) = " + wasm.total_blocks(129));
-		return ok && wasm.total_blocks(129) == -1;
+		print_str("  useful_height(0) = " + wasm.useful_height(0) + ", useful_height(" + (K_MAX + 1) + ") = " + wasm.useful_height(K_MAX + 1));
+		return ok && wasm.useful_height(0) == -1 && wasm.useful_height(K_MAX + 1) == -1;
 	});
-	await test("the largest message for each block length and digest flag", () => {
+	await test("the largest message for each budget and hash flag", () => {
 		let ok = true;
-		for (const blen of [64, 128, 256, 512, 1024, 2048, 4096, 8192]) {
+		for (const budget of [128, 256, 512, 1024, 2048, 4096, 8192]) {
 			for (const dflag of [0, 1]) {
-				const low = largest_message(blen, dflag);
+				const low = largest_message(budget, dflag);
 				if (low == 0) {
-					print_str("  blen = " + blen + ", dflag = " + dflag + ": block too small for any message");
+					print_str("  budget = " + budget + ", dflag = " + dflag + ": block too small for any message");
 					continue;
 				}
-				const K = wasm.needed_blocks(low, blen, dflag);
-				const N = wasm.total_blocks(K);
-				const rate = (100 * low / (N * blen)).toFixed(1);
-				print_str("  blen = " + blen + ", dflag = " + dflag + ": up to " + low + " bytes in K = " + K +
-					" of N = " + N + " blocks, " + rate + "% of the sent bytes are message");
-				ok = ok && (low == MLEN_MAX || wasm.needed_blocks(low + 1, blen, dflag) < 0);
+				const p = plan(low, budget, dflag);
+				const rate = (100 * low / (p.N * p.blen)).toFixed(1);
+				print_str("  budget = " + budget + ", dflag = " + dflag + ": up to " + low + " bytes in K = " + p.K +
+					" of N = " + p.N + " blocks of " + p.blen + " bytes, " + rate + "% of all N blocks are message");
+				ok = ok && (low == MLEN_MAX || plan(low + 1, budget, dflag) == null);
 			}
 		}
 		return ok;
@@ -404,24 +434,27 @@ async function size_tests() {
 
 async function argument_tests() {
 	print_head("Bad arguments");
-	await test("needed_blocks, total_blocks and encode_message with bad arguments", () => {
+	await test("needed_blocks, block_length, useful_height, encode_message and encode_block with bad arguments", () => {
 		const calls = [
-			["needed_blocks(0, 256, 0)", "empty message", () => wasm.needed_blocks(0, 256, 0)],
-			["needed_blocks(" + (MLEN_MAX + 1) + ", 8192, 0)", "message too long", () => wasm.needed_blocks(MLEN_MAX + 1, 8192, 0)],
-			["needed_blocks(100, 0, 0)", "no block", () => wasm.needed_blocks(100, 0, 0)],
-			["needed_blocks(100, " + (BLEN_MAX + 1) + ", 0)", "block too long", () => wasm.needed_blocks(100, BLEN_MAX + 1, 0)],
-			["needed_blocks(100, 256, 2)", "digest flag must be 0 or 1", () => wasm.needed_blocks(100, 256, 2)],
-			["needed_blocks(100, 16, 0)", "block too short for anything", () => wasm.needed_blocks(100, 16, 0)],
-			["needed_blocks(100000, 64, 0)", "would need more than 128 blocks", () => wasm.needed_blocks(100000, 64, 0)],
-			["total_blocks(0)", "K must be at least 1", () => wasm.total_blocks(0)],
-			["total_blocks(129)", "K must be at most 128", () => wasm.total_blocks(129)],
-			["encode_message(0, 256, 0)", "empty message", () => wasm.encode_message(0, 256, 0)],
-			["encode_message(100000, 64, 0)", "would need more than 128 blocks", () => wasm.encode_message(100000, 64, 0)],
-			["encode_message(100, 256, -1)", "digest flag must be 0 or 1", () => wasm.encode_message(100, 256, -1)],
-			["decode_message(0)", "no block", () => wasm.decode_message(0)],
+			["needed_blocks(0, 256, 4, 0)", "empty message", () => wasm.needed_blocks(0, 256, 4, 0)],
+			["needed_blocks(" + (MLEN_MAX + 1) + ", 8192, 12, 0)", "message too long", () => wasm.needed_blocks(MLEN_MAX + 1, 8192, 12, 0)],
+			["needed_blocks(100, " + (BLEN_MAX + 1) + ", 4, 0)", "block too long", () => wasm.needed_blocks(100, BLEN_MAX + 1, 4, 0)],
+			["needed_blocks(100, 256, 0, 0)", "height must be at least 1", () => wasm.needed_blocks(100, 256, 0, 0)],
+			["needed_blocks(100, 256, " + (HEIGHT_MAX + 1) + ", 0)", "height must be at most " + HEIGHT_MAX, () => wasm.needed_blocks(100, 256, HEIGHT_MAX + 1, 0)],
+			["needed_blocks(100, 256, 4, 2)", "hash flag must be 0 or 1", () => wasm.needed_blocks(100, 256, 4, 2)],
+			["needed_blocks(100, 87, 4, 0)", "no room left for a single value", () => wasm.needed_blocks(100, 87, 4, 0)],
+			["needed_blocks(1000, 140, 4, 0)", "would need more than N = 16 blocks", () => wasm.needed_blocks(1000, 140, 4, 0)],
+			["needed_blocks(" + MLEN_MAX + ", 1024, 16, 0)", "would need more than " + K_MAX + " blocks", () => wasm.needed_blocks(MLEN_MAX, 1024, 16, 0)],
+			["block_length(3, 10, 4, 0)", "K so large that whole blocks would be padding", () => wasm.block_length(3, 10, 4, 0)],
+			["block_length(100, 17, 4, 0)", "K larger than N", () => wasm.block_length(100, 17, 4, 0)],
+			["useful_height(0)", "K must be at least 1", () => wasm.useful_height(0)],
+			["encode_message(0, 256, 4, 0)", "empty message", () => wasm.encode_message(0, 256, 4, 0)],
+			["encode_block(0)", "no tree after a failed encode_message", () => wasm.encode_block(0)],
+			["regenerate_tree()", "nothing decoded", () => wasm.regenerate_tree()],
+			["decode_message(3)", "shorter than the header", () => wasm.decode_message(3)],
+			["decode_message(" + (BLEN_MAX + 1) + ")", "block too long", () => wasm.decode_message(BLEN_MAX + 1)],
 			["digest_message(0)", "empty message", () => wasm.digest_message(0)],
 			["digest_message(" + (MLEN_MAX + 1) + ")", "message too long", () => wasm.digest_message(MLEN_MAX + 1)],
-			["decode_message(" + (BLEN_MAX + 1) + ")", "block too long", () => wasm.decode_message(BLEN_MAX + 1)],
 		];
 		let ok = true;
 		for (const [call, why, func] of calls) {
@@ -431,35 +464,38 @@ async function argument_tests() {
 		}
 		return ok;
 	});
-	await test("verify_block with damaged headers, wrong lengths and foreign roots, blen = 256, dflag = 1", () => {
-		const list = encode(random_bytes(900), 256, 1);
-		const other = encode(random_bytes(900), 256, 1);
+	await test("verify_block with damaged headers, wrong lengths and foreign roots, budget = 256, dflag = 1", () => {
+		const list = encode(random_bytes(900), 256, 1, 5);
+		const other = encode(random_bytes(900), 256, 1, 5);
 		if (!list || !other)
 			return false;
 		const good = list[3];
 		const N = list.length;
 		const cases = [];
+		const with_header = (head) => {
+			const bad = good.slice();
+			bad[0] = head;
+			bad[1] = head >>> 8;
+			bad[2] = head >>> 16;
+			bad[3] = head >>> 24;
+			return bad;
+		};
+		const head = block_header(good);
 		cases.push(["the intact block", good, 0]);
-		let bad = good.slice();
-		bad[1] = 5;
-		cases.push(["index byte changed from 3 to 5", bad, -1]);
-		bad = good.slice();
-		bad[1] = N;
-		cases.push(["index byte set to N = " + N, bad, -1]);
-		bad = good.slice();
-		bad[0] ^= 1;
-		cases.push(["K - 1 changed in the header", bad, -1]);
-		bad = good.slice();
-		bad[0] ^= 128;
-		cases.push(["digest flag flipped in the header", bad, -1]);
-		bad = good.slice();
-		bad.set(block_tag(other[3]), bad.length - 32);
-		cases.push(["root replaced by the root of another message", bad, -1]);
+		cases.push(["index changed from 3 to 5", with_header(head ^ 6), -1]);
+		cases.push(["index set to N = " + N, with_header((head & 0xFFFF0000) | N), -1]);
+		cases.push(["K - 1 changed in the header", with_header(head ^ 1 << 16), -1]);
+		cases.push(["height changed in the header", with_header(head ^ 1 << 26), -1]);
+		cases.push(["reserved bit set in the header", with_header(head | 1 << 30), -1]);
+		cases.push(["hash flag flipped in the header", with_header(head ^ 1 << 31), -1]);
+		const foreign = good.slice();
+		foreign.set(block_tag(other[3]), foreign.length - 32);
+		cases.push(["root replaced by the root of another message", foreign, -1]);
 		cases.push(["block cut short by one byte", good.slice(0, -1), -1]);
 		const longer = new Uint8Array(good.length + 1);
 		longer.set(good);
 		cases.push(["block with one extra byte", longer, -1]);
-		cases.push(["block cut down to the two header bytes", good.slice(0, 2), -1]);
+		cases.push(["block cut down to the four header bytes", good.slice(0, 4), -1]);
 		let ok = true;
 		for (const [why, buffer, expected] of cases) {
 			block.set(buffer);
@@ -469,7 +505,7 @@ async function argument_tests() {
 		}
 		return ok;
 	});
-	await test("decode_message with a corrupted block, a duplicate or blocks of two messages, blen = 512, dflag = 0", () => {
+	await test("decode_message with a corrupted block, a duplicate or blocks of two messages, budget = 512, dflag = 0", () => {
 		const list = encode(random_bytes(5000), 512, 0);
 		const other = encode(random_bytes(5000), 512, 0);
 		if (!list || !other)
@@ -491,23 +527,58 @@ async function argument_tests() {
 	});
 }
 
+async function relay_tests() {
+	print_head("Relaying");
+	await test("a relay decodes from K blocks, checks the root with regenerate_tree and sends every block again, budget = 512, dflag = 0", () => {
+		const data = random_bytes(10000);
+		const list = encode(data, 512, 0);
+		if (!list)
+			return false;
+		const K = block_K(list[0]);
+		const N = list.length;
+		const decoded = decode(shuffle(list.slice()).slice(0, K));
+		const before = wasm.encode_block(0);
+		print_str("  K = " + K + ", N = " + N + ", decode_message = " + (decoded ? decoded.length : -1) + ", encode_block(0) before regenerate_tree = " + before);
+		let start = performance.now();
+		const ret = wasm.regenerate_tree();
+		let end = performance.now();
+		print_str("  regenerate_tree() = " + ret + " in " + ms(start, end) + ", the rebuilt root matches the received one");
+		let same = 0;
+		for (let i = 0; i < N; ++i)
+			if (wasm.encode_block(i) == list[0].length && equal(block.subarray(0, list[0].length), list[i]))
+				++same;
+		print_str("  " + same + " of " + N + " regenerated blocks are identical to the sent ones");
+		return starts_with(decoded, data) && before == -1 && ret == 0 && same == N;
+	});
+	await test("regenerate_tree refuses a message changed after decoding", () => {
+		const list = encode(random_bytes(3000), 256, 0);
+		if (!list)
+			return false;
+		const decoded = decode(list.slice(-block_K(list[0])));
+		message[0] ^= 1;
+		const ret = wasm.regenerate_tree();
+		print_str("  regenerate_tree() = " + ret + ", encode_block(0) = " + wasm.encode_block(0));
+		return decoded != null && ret == -1 && wasm.encode_block(0) == -1;
+	});
+}
+
 async function bit_flip_tests() {
 	print_head("Every single bit flip");
 	const cases = [
-		["\"Hello World!\"", from_text("Hello World!"), 32, 0],
-		["\"Hello World!\"", from_text("Hello World!"), 32, 1],
-		["\"Hello World!\"", from_text("Hello World!"), 64, 0],
-		["a random message of 3000 bytes", random_bytes(3000), 256, 0],
-		["a random message of 3000 bytes", random_bytes(3000), 512, 1],
+		["\"Hello World!\"", from_text("Hello World!"), 160, 0, 1],
+		["\"Hello World!\"", from_text("Hello World!"), 160, 1, 1],
+		["\"Hello World!\"", from_text("Hello World!"), 160, 0, 3],
+		["a random message of 3000 bytes", random_bytes(3000), 256, 0, 6],
+		["a random message of 3000 bytes", random_bytes(3000), 512, 1, 4],
 	];
-	for (const [what, data, blen, dflag] of cases) {
-		await test("verify_block on all bit flips of every block of " + what + ", blen = " + blen + ", dflag = " + dflag, () => {
-			const list = encode(data, blen, dflag);
+	for (const [what, data, budget, dflag, height] of cases) {
+		await test("verify_block on all bit flips of every block of " + what + ", budget = " + budget + ", dflag = " + dflag + ", height = " + height, () => {
+			const list = encode(data, budget, dflag, height);
 			if (!list)
 				return false;
 			let flips = 0, detected = 0;
 			for (const buffer of list) {
-				for (let bit = 0; bit < 8 * blen; ++bit) {
+				for (let bit = 0; bit < 8 * buffer.length; ++bit) {
 					++flips;
 					if (!verify(flip_bit(buffer, bit)))
 						++detected;
@@ -541,19 +612,19 @@ function channel(list, lost, broken, doubled) {
 async function random_tests() {
 	print_head("Random messages over a lossy channel");
 	const cases = [
-		[1000, 256, 0],
-		[900, 256, 1],
-		[10000, 512, 0],
-		[50000, 1024, 1],
-		[100000, 1024, 0],
-		[250000, 4096, 1],
-		[1000000, 8192, 0],
+		[1000, 256, 0, 0],
+		[900, 256, 1, 0],
+		[10000, 512, 0, 0],
+		[50000, 1024, 1, 0],
+		[100000, 1024, 0, 0],
+		[250000, 4096, 1, 8],
+		[1000000, 8192, 0, 9],
 	];
-	for (const [mlen, blen, dflag] of cases) {
-		await test("a random message with mlen = " + mlen + ", blen = " + blen + ", dflag = " + dflag + ", losing or corrupting N - K blocks", () => {
+	for (const [mlen, budget, dflag, height] of cases) {
+		await test("a random message with mlen = " + mlen + ", budget = " + budget + ", dflag = " + dflag + (height ? ", height = " + height : "") + ", losing or corrupting all but K blocks", () => {
 			const data = random_bytes(mlen);
 			let start = performance.now();
-			const list = encode(data, blen, dflag);
+			const list = encode(data, budget, dflag, height);
 			let end = performance.now();
 			if (!list)
 				return false;
@@ -563,7 +634,7 @@ async function random_tests() {
 			const broken = N - K - lost;
 			const doubled = random_int(4);
 			const [sent, bytes] = channel(list, lost, broken, doubled);
-			print_str("  K = " + K + ", N = " + N + ", encode_message took " + ms(start, end));
+			print_str("  K = " + K + ", N = " + N + ", blen = " + list[0].length + ", encoding all N blocks took " + ms(start, end));
 			print_str("  " + plural(lost, "block") + " lost, " + plural(broken, "block") + " corrupted (" + plural(bytes, "byte") + "), " +
 				plural(doubled, "block") + " arrived twice");
 			const receiver = new Receiver();
@@ -581,7 +652,7 @@ async function random_tests() {
 			return counts.decoded == 1 && starts_with(decoded, data);
 		});
 	}
-	await test("losing N - K + 1 blocks of a random message, mlen = 20000, blen = 1024, dflag = 1", () => {
+	await test("losing N - K + 1 blocks of a random message, mlen = 20000, budget = 1024, dflag = 1", () => {
 		const list = encode(random_bytes(20000), 1024, 1);
 		if (!list)
 			return false;
@@ -603,15 +674,15 @@ async function mixed_tests() {
 		const text = from_text("Blocks of different messages can arrive mixed up and in any order. The receiver keeps them " +
 			"apart by the root at the end of each block, and decodes each message as soon as it has K of its blocks.");
 		const messages = [
-			["\"Hello World!\"", hello, 64, 0],
-			["a short text", text, 128, 0],
+			["\"Hello World!\"", hello, 160, 0],
+			["a short text", text, 192, 0],
 			["a random message of 3000 bytes", random_bytes(3000), 256, 0],
 			["a random message of 30000 bytes", random_bytes(30000), 1024, 1],
 		];
 		const roots = new Map();
 		let pool = [];
-		for (const [what, data, blen, dflag] of messages) {
-			const list = encode(data, blen, dflag);
+		for (const [what, data, budget, dflag] of messages) {
+			const list = encode(data, budget, dflag);
 			if (!list)
 				return false;
 			const K = block_K(list[0]);
@@ -620,7 +691,7 @@ async function mixed_tests() {
 			const broken = random_int(N - K - lost + 1);
 			const doubled = random_int(3);
 			const [sent, bytes] = channel(list, lost, broken, doubled);
-			print_str("  " + what + ": blen = " + blen + ", dflag = " + dflag + ", K = " + K + ", N = " + N + ", " +
+			print_str("  " + what + ": blen = " + list[0].length + ", dflag = " + dflag + ", K = " + K + ", N = " + N + ", " +
 				lost + " lost, " + broken + " corrupted (" + plural(bytes, "byte") + "), " + doubled + " doubled");
 			roots.set(to_hex(block_tag(list[0])), [what, data]);
 			pool = pool.concat(sent);
@@ -649,50 +720,67 @@ async function mixed_tests() {
 }
 
 async function speed_tests() {
-	print_head("Speed with the largest messages");
-	for (const [blen, dflag] of [[1024, 0], [1024, 1], [8192, 0], [8192, 1]]) {
-		const mlen = largest_message(blen, dflag);
-		await test("speed with mlen = " + mlen + ", blen = " + blen + ", dflag = " + dflag, () => {
+	print_head("Speed");
+	const cases = [
+		["100 kB in blocks of 1 kB", 100000, 1024, 0, 0],
+		["the largest message in blocks of 8 kB", MLEN_MAX, 8192, 0, 0],
+		["the largest K, " + K_MAX + " blocks of 8 values each", 7932, 252, 0, 14],
+	];
+	for (const [what, mlen, budget, dflag, height] of cases) {
+		await test("speed with " + what + ", mlen = " + mlen + ", budget = " + budget + ", dflag = " + dflag, () => {
+			const p = plan(mlen, budget, dflag, height);
+			if (!p)
+				return false;
 			const data = random_bytes(mlen);
 			message.set(data);
 			let start = performance.now();
-			const N = wasm.encode_message(mlen, blen, dflag);
+			const K = wasm.encode_message(mlen, p.blen, p.height, dflag);
 			let end = performance.now();
-			if (N < 0)
+			if (K != p.K)
 				return false;
-			const K = block_K(blocks);
-			print_str("  K = " + K + ", N = " + N + ", encode_message took " + ms(start, end) + ", " + mb_per_s(mlen, start, end));
+			print_str("  K = " + K + ", N = " + p.N + ", blen = " + p.blen + ", encode_message took " + ms(start, end) + " to build the tree over all N blocks");
+			const picked = shuffle(Array.from({ length: p.N }, (_, i) => i)).slice(0, K);
 			const list = [];
-			for (let i = 0; i < N; ++i)
-				list.push(blocks.slice(i * blen, (i + 1) * blen));
+			start = performance.now();
+			for (const index of picked) {
+				wasm.encode_block(index);
+				list.push(block.slice(0, p.blen));
+			}
+			end = performance.now();
+			print_str("  encode_block took " + ((end - start) * 1000 / K).toFixed(1) + " µs per block");
 			let ok = true;
 			start = performance.now();
 			for (const buffer of list) {
 				block.set(buffer);
-				ok = ok && wasm.verify_block(blen) == 0;
+				ok = ok && wasm.verify_block(p.blen) == 0;
 			}
 			end = performance.now();
-			print_str("  verify_block took " + ms(start, end) + " for all " + N + " blocks, " + ((end - start) * 1000 / N).toFixed(1) + " µs per block");
+			print_str("  verify_block took " + ((end - start) * 1000 / K).toFixed(1) + " µs per block");
 			for (let i = 0; i < K; ++i)
-				blocks.set(list[N - 1 - i], i * blen);
+				blocks.set(list[i], i * p.blen);
 			start = performance.now();
-			const len = wasm.decode_message(blen);
+			const len = wasm.decode_message(p.blen);
 			end = performance.now();
-			print_str("  decode_message from the last " + K + " blocks took " + ms(start, end) + ", " + mb_per_s(mlen, start, end));
-			return ok && len >= mlen && equal(message.subarray(0, mlen), data);
+			print_str("  decode_message from " + K + " random blocks took " + ms(start, end) + ", " + mb_per_s(mlen, start, end));
+			ok = ok && len >= mlen && equal(message.subarray(0, mlen), data);
+			start = performance.now();
+			const ret = wasm.regenerate_tree();
+			end = performance.now();
+			print_str("  regenerate_tree for a relay took " + ms(start, end));
+			return ok && ret == 0;
 		});
 	}
 }
 
 async function goodbye_tests() {
 	print_head("Hello World! again");
-	await test("\"Hello World!\" after the large messages, leftovers in the buffers must not matter, blen = 32, dflag = 1", () => {
+	await test("\"Hello World!\" after the large messages, leftovers in the buffers must not matter, budget = 200, dflag = 1", () => {
 		const hello = from_text("Hello World!");
 		print_str("  message before: " + to_text(hello));
-		const list = encode(hello, 32, 1);
+		const list = encode(hello, 200, 1);
 		if (!list)
 			return false;
-		const data = decode(list);
+		const data = decode([list[list.length - 1]]);
 		print_str("  message after: " + (data ? to_text(data.subarray(0, hello.length)) : "decode_message failed"));
 		return starts_with(data, hello);
 	});
@@ -704,6 +792,7 @@ async function run_tests() {
 	await digest_tests();
 	await size_tests();
 	await argument_tests();
+	await relay_tests();
 	await bit_flip_tests();
 	await random_tests();
 	await mixed_tests();
@@ -719,8 +808,8 @@ WebAssembly.instantiateStreaming(fetch("hydra.wasm"))
 		wasm = obj.instance.exports;
 		const buffer = wasm.memory.buffer;
 		digest = new Uint8Array(buffer, wasm.digest.value, 32);
-		message = new Uint8Array(buffer, wasm.message.value, MLEN_MAX);
-		blocks = new Uint8Array(buffer, wasm.blocks.value, BLEN_MAX * BCNT_MAX);
+		message = new Uint8Array(buffer, wasm.message.value, CAPACITY_MAX);
+		blocks = new Uint8Array(buffer, wasm.blocks.value, BLOCKS_LEN);
 		block = new Uint8Array(buffer, wasm.block.value, BLEN_MAX);
 		run_tests();
 	});

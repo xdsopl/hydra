@@ -9,113 +9,134 @@
 
 ---
 
-## 2. Parameter Constraints ($K$ and $N$)
-* **Needed Blocks ($K$):** $K \in [1, 128]$
-* **Total Blocks ($N$):** 
-  $$\text{If } K = 1 \text{ then } N = 1, \text{ else } N = 2^{\lceil \log_2(K) \rceil + 1}$$
-* **Redundancy:** Provides a robust 2x redundancy tier for all $K > 1$, scaling up to a maximum of $N = 256$ blocks.
+## 2. Parameters ($K$, $N$ and the Hash Length)
+* **Needed Blocks ($K$):** $K \in [1, 1024]$. The sender picks $K$: the message is split into $K$ parts, and any $K$ blocks are enough to get it back.
+* **Total Blocks ($N$):** $N = 2^{height}$ with $height \in [1, 16]$, so $N \in [2, 65536]$, and always $N \ge K$. The sender picks $N$ as well. $K = 1$ is no special case: the message then fits into one block, and each of the $N \ge 2$ blocks holds all of it.
+* **Recommended $N$:** at least 16 times the next power of two of $K$, so independent senders that pick random indices rarely send the same block. `useful_height` gives that height, capped at 16. It is only a recommendation; in small blocks with 32-byte hashes, the longer proof of a larger tree may leave too little room.
+* **Hash Length ($hlen$):** 16 bytes by default, or 32 bytes for the paranoid. The whole tree uses it: leaves, nodes, proof and root.
+* **Payload Length ($plen$):** $plen = blen - 4 - hlen \cdot (height + 1)$ for a block of $blen$ bytes. The payload holds $v = \lfloor 8 \cdot plen / 31 \rfloor$ values of 31 bits each. For a message of $mlen$ bytes, the sender needs $K \cdot v \cdot 31 \ge 31 + 8 \cdot mlen$; the extra 31 bits hold the value the M31 packing substitutes for $2^{31} - 1$.
 
 ---
 
-## 3. Block & Wire Format Layout
+## 3. Block Format
 
-The protocol uses two distinct paths depending on whether erasure coding is active:
+All multi-byte fields are little-endian.
 
-### Fast-Path ($K = 1$, No Erasure Coding / No Splits)
-When $K = 1$, no M31 encoding is performed. The message is stored as-is without an index byte.
-* **Layout Structure:**
-  ```
-  [ Byte 0: digest_flag + (K - 1) ] [ Message Payload ] [ Hash (4 or 8 bytes) ]
-  ```
-* **Byte 0 Breakdown:**
-  * **Bits 0–6 (`K - 1`):** Encoded as `0` (since $K - 1 = 0$).
-  * **Bit 7 (`digest_flag`):** `0` = 4-byte, `1` = 8-byte Blake2s hash over Byte 0 and the payload.
-* **Error Protection:** The hash only guards against accidental corruption that slipped past the overlying system. The 4-byte hash is the default, the 8-byte hash adds extra protection.
-* **Capacity:** Up to $blen - 5$ bytes of message with the 4-byte hash, or $blen - 9$ bytes with the 8-byte hash.
-* *Omissions:* The index byte and the Merkle proof are skipped entirely ($N = 1$).
+```
+[ header (4 bytes) ] [ payload (plen bytes) ] [ proof (height × hlen bytes) ] [ root (hlen bytes) ]
+```
 
-### Full-Path ($K > 1$, Cauchy Erasure Coding Enabled)
-When $K > 1$, the message is split into $K$ blocks, expanded to $N$ total blocks via Cauchy matrix multiplication over $M31$, and bundled with full cryptographic proof materials.
-* **Layout Structure:**
-  ```
-  [ Byte 0: digest_flag + (K - 1) ] [ Byte 1: index (0..255) ] [ Payload ] [ Merkle Proof Path ]
-  ```
-* **Byte Breakdown:**
-  * **Byte 0:** Bits 0–6 = $K - 1$ (values $1$ to $127$ for $K \in [2, 128]$), Bit 7 = `digest_flag` (`0` = 16-byte, `1` = 32-byte Blake2s hashes).
-  * **Byte 1 (index):** 8-bit unsigned integer ($0$ to $255$) identifying the position of the block.
-  * **Merkle Proof Path:** Consists of $\log_2(N)$ sibling hashes, ordered from the leaf upwards, followed by the root (16 or 32 bytes each), enabling zero-trust verification against the canonical root. The leaf hash covers Bytes 0 and 1 and the payload. The root identifies the message, so blocks of many unrelated messages can be told apart and cached until their siblings arrive.
-* **Identifying Blocks:** Once a block's proof passes, its last 16 or 32 bytes (per `digest_flag`) are the root identifying the message, and Byte 1 is its index. Callers cache blocks by root and index and hand $K$ distinct blocks of the same root to the decoder, which rejects a duplicate index instead of filtering it.
+* **Header:** one little-endian 32-bit word.
+
+  | Bits | Field |
+  |-----:|-------|
+  | 31 | hash flag: `0` = 16-byte hashes, `1` = 32-byte hashes |
+  | 30 | reserved, must be `0`, otherwise the block is dropped |
+  | 29–26 | $height - 1$ |
+  | 25–16 | $K - 1$ |
+  | 15–0 | index of the block, $0 \le index < N$ |
+
+  On the wire, bytes 0–1 hold the index (low byte first), byte 2 holds the low 8 bits of $K - 1$, and byte 3 holds the top 2 bits of $K - 1$ in bits 0–1, $height - 1$ in bits 2–5, the reserved bit in bit 6 and the hash flag in bit 7.
+* **Payload:** the $v$ values of the block, 31 bits each, packed from the lowest bit up. The bits after the last value, and any whole bytes after them, are padding and must be zero.
+* **Proof:** the $height$ sibling hashes on the way from the leaf up to the root, lowest first.
+* **Root:** the root of the Merkle tree over all $N$ blocks.
+* **Merkle Tree:** BLAKE2s with the output length $hlen$. A leaf is the hash keyed with the byte `0` over the header and the payload, so the parameters and flags cannot change without breaking the proof. A node is the hash keyed with the byte `1` over its two children.
+* **Valid Blocks:** a block is only valid if the reserved bit is `0`, $K \le N$, $index < N$, the padding is zero and the proof leads to the root.
+* **Block Length:** blocks carry no length field. The transport knows how long each block is and passes that on.
 
 ---
 
-## 4. Module API
+## 4. Encoding, Decoding & Relaying
+* **Deterministic:** the blocks depend only on the message, $K$, $plen$, $N$ and the hash length, so anyone with the message regenerates identical blocks. The message is packed into $K \cdot v$ values over M31 and expanded into $N$ blocks with a Cauchy matrix, block $index$ using row $K + index$.
+* **Streaming Encoder:** the encoder generates one block at a time, hashes its leaf and throws the block away. The $N$ blocks are never all in memory; only the tree is kept, at most $2 \cdot 65536 \cdot 32$ bytes. Afterwards any block can be generated again on demand, with its proof.
+* **Decoding:** any $K$ valid blocks with the same header fields (apart from the index), the same length, the same root and distinct indices are the complete state: they give back the message, and from it every block.
+* **Relaying:** a relay must decode, regenerate the tree and check that the rebuilt root equals the received root before it sends any block on. Otherwise a malicious sender could build a tree over blocks that are not one codeword, and different choices of $K$ blocks would then decode differently.
+* **Identity:** the root identifies one encoding, not the message. The message itself is identified by its plain hash, `digest_message`.
+* **Cost:** encoding has to generate all $N$ blocks for the tree, about $N \cdot mlen \cdot 8 / 31$ multiplications in M31, so a larger $N$ costs encoders and relays alike. Decoding grows with $K^3$ for the coefficients, plus $K \cdot mlen \cdot 8 / 31$ multiplications for the data.
 
-The WebAssembly module exports a few fixed buffers and six functions. All functions return `-1` on bad arguments or failure.
+---
+
+## 5. Module API
+
+The WebAssembly module exports a few fixed buffers and nine functions. All functions return `-1` on bad arguments or failure.
 
 ### Buffers
-* **`message`** ($2^{20}$ bytes): the message to encode, and the decoded message after `decode_message`.
-* **`blocks`** ($256 \times 8192$ bytes): the $N$ encoded blocks after `encode_message`, block $i$ at offset $i \cdot blen$. Before `decode_message`, the caller puts $K$ blocks here one after another.
-* **`block`** ($8192$ bytes): a single received block for `verify_block`.
+* **`message`** ($2^{20} + 8192$ bytes): the message to encode, and the decoded message after `decode_message`. Messages are at most $2^{20}$ bytes; the decoder may fill up to one more block of padding.
+* **`blocks`**: before `decode_message`, the caller puts $K$ blocks here, one after another.
+* **`block`** ($8192$ bytes): a single block, written by `encode_block` and read by `verify_block`.
 * **`digest`** ($32$ bytes): the result of `digest_message`.
 
 ### Functions
-* **`needed_blocks(mlen, blen, dflag)`:** returns $K$ for a message of `mlen` bytes in blocks of `blen` bytes.
-* **`total_blocks(K)`:** returns $N$.
-* **`encode_message(mlen, blen, dflag)`:** encodes the first `mlen` bytes of `message` into `blocks` and returns $N$.
+* **`needed_blocks(mlen, blen, height, dflag)`:** returns the smallest $K$ that holds a message of `mlen` bytes in blocks of `blen` bytes with a tree of the given height.
+* **`block_length(mlen, K, height, dflag)`:** returns the smallest block length that still holds the message in $K$ blocks. It is often shorter than the budget, and the caller can use the rest for other things.
+* **`useful_height(K)`:** returns the recommended height for $K$, so that $N \ge 16 \cdot 2^{\lceil \log_2 K \rceil}$, at most 16.
+* **`encode_message(mlen, blen, height, dflag)`:** builds the tree over all $N$ blocks for the first `mlen` bytes of `message` and returns $K$. Longer blocks than `block_length` suggests are fine; the extra bytes become zero padding.
+* **`encode_block(index)`:** writes block `index` with its proof into `block` and returns its length. Only after `encode_message`, or after `decode_message` and a successful `regenerate_tree`.
 * **`verify_block(blen)`:** checks the block in `block`. Returns `0` to keep it and `-1` to drop it.
-* **`decode_message(blen)`:** decodes the $K$ blocks in `blocks` into `message` and returns the number of bytes written. Returns `-1` if a block fails its proof, the blocks belong to different messages, or an index repeats.
-* **`digest_message(mlen)`:** writes the plain 32-byte Blake2s hash of the first `mlen` bytes of `message` into `digest`. Truncate it for shorter identifiers instead of asking for a shorter hash.
+* **`decode_message(blen)`:** decodes the $K$ blocks in `blocks` into `message` and returns the number of bytes written. Returns `-1` if a block is invalid, the blocks disagree on the header or root, or an index repeats.
+* **`regenerate_tree()`:** after `decode_message`, rebuilds the tree from the decoded message and returns `0` if the root matches the received one. Only then may a relay send blocks on.
+* **`digest_message(mlen)`:** writes the plain 32-byte BLAKE2s hash of the first `mlen` bytes of `message` into `digest`. Truncate it for shorter identifiers instead of asking for a shorter hash.
+
+### Planning
+The sender knows the message length and a budget for the block length. $K$ depends on the height through the length of the proof, and the recommended height depends on $K$, so try heights from 1 upwards: `needed_blocks(mlen, budget, height, dflag)` gives $K$, and stop at the first height with `useful_height(K) <= height`. If no height gets there, take the one with the largest $N / K$. Then `block_length(mlen, K, height, dflag)` tells how much of the budget the blocks really need.
 
 ### Sending
-Write the message into `message`, call `encode_message(mlen, blen, dflag)` and send the $N$ blocks of `blen` bytes from `blocks`. Any $K$ of them are enough to get the message back. The sender does not have to send all $N$: $K$ plus a margin for the expected losses is enough, and more blocks can follow later for receivers that are still missing some. `needed_blocks` and `total_blocks` tell you $K$ and $N$ before encoding, so a transmission can be planned up front.
+Write the message into `message`, call `encode_message(mlen, blen, height, dflag)`, then `encode_block(index)` for each block to send and send the `blen` bytes from `block`. Any $K$ of the $N$ blocks are enough to get the message back. The sender does not have to send all $N$: $K$ plus a margin for the expected losses is enough, and more blocks can follow later for receivers that are still missing some.
 
 ### Receiving
-Copy each received block into `block` and drop it if `verify_block(blen)` fails. Cache the rest by root and index as described above. A block with $K = 1$ holds the whole message on its own. Once $K$ distinct blocks of a root are there, copy them one after another into `blocks` and call `decode_message(blen)`.
+Copy each received block into `block` and drop it if `verify_block(blen)` fails. Cache the rest by root and index. Once $K$ distinct blocks of a root are there, copy them one after another into `blocks` and call `decode_message(blen)`.
 
 The decoder delivers at least `mlen` bytes, followed by zero padding. HYDRA does not know the exact length, so the application has to carry it inside the message, for example in a length field. Call `digest_message(mlen)` with that exact length to get an identifier of the message itself.
+
+### Relaying
+After `decode_message`, call `regenerate_tree()`. If it returns `0`, `encode_block(index)` gives any of the $N$ blocks, identical to the ones the sender made. If it returns `-1`, the blocks did not come from one honest encoding: keep nothing and send nothing on.
 
 ```js
 const wasm = (await WebAssembly.instantiateStreaming(fetch("hydra.wasm"))).instance.exports;
 const memory = wasm.memory.buffer;
-const message = new Uint8Array(memory, wasm.message.value, 1 << 20);
-const blocks = new Uint8Array(memory, wasm.blocks.value, 8192 * 256);
+const message = new Uint8Array(memory, wasm.message.value, (1 << 20) + 8192);
 const block = new Uint8Array(memory, wasm.block.value, 8192);
+const blocks = new Uint8Array(memory, wasm.blocks.value, 8192 * 2);
 
-const blen = 256;
-message.set(new TextEncoder().encode("Hello World!"));
-const N = wasm.encode_message(12, blen, 0);
+const text = new TextEncoder().encode("Hello World!");
+message.set(text);
+const height = 4, dflag = 0;
+const K = wasm.needed_blocks(text.length, 200, height, dflag);
+const blen = wasm.block_length(text.length, K, height, dflag);
+wasm.encode_message(text.length, blen, height, dflag);
 
-block.set(blocks.subarray(0, blen));
+wasm.encode_block(5);
 if (wasm.verify_block(blen) == 0) {
 	blocks.set(block.subarray(0, blen), 0);
 	const len = wasm.decode_message(blen);
-	console.log(new TextDecoder().decode(message.subarray(0, 12)), N, len);
+	console.log(new TextDecoder().decode(message.subarray(0, text.length)), K, blen, len);
 }
 ```
 
 ### Limits
 * **Block length:** $blen \le 8192$ bytes.
-* **Message length:** $1 \le mlen \le 2^{20}$ bytes, but $K \le 128$ caps it further. The largest message for some block lengths:
+* **Message length:** $1 \le mlen \le 2^{20}$ bytes, but $K \le 1024$ caps it further for short blocks. The largest message for some budgets, with the recommended $N$:
 
-  | blen | dflag = 0 | dflag = 1 |
-  |-----:|----------:|----------:|
-  | 64 | 59 | 55 |
-  | 128 | 430 | 119 |
-  | 256 | 13884 | 988 |
-  | 512 | 46620 | 28268 |
-  | 1024 | 112092 | 93740 |
-  | 2048 | 243036 | 224684 |
-  | 4096 | 505420 | 487068 |
-  | 8192 | 1029692 | 1011340 |
+  | budget | dflag = 0 | dflag = 1 |
+  |-------:|----------:|----------:|
+  | 128 | 50 ($K = 2$, $N = 32$) | — |
+  | 256 | 13884 ($K = 512$, $N = 8192$) | 112 ($K = 2$, $N = 32$) |
+  | 512 | 273788 ($K = 1024$, $N = 16384$) | 29756 ($K = 512$, $N = 8192$) |
+  | 1024 | 797564 ($K = 1024$, $N = 16384$) | 551548 ($K = 1024$, $N = 16384$) |
+  | 2048 | 1048576 ($K = 582$, $N = 16384$) | 1048576 ($K = 672$, $N = 16384$) |
+  | 4096 | 1048576 ($K = 272$, $N = 8192$) | 1048576 ($K = 288$, $N = 8192$) |
+  | 8192 | 1048576 ($K = 132$, $N = 4096$) | 1048576 ($K = 135$, $N = 4096$) |
+
+  With a smaller $N$ than recommended, larger messages fit; `needed_blocks` tells for any height.
 
 ---
 
-## 5. Building & Testing
+## 6. Building & Testing
 * **`make`:** builds `temp/hydra.wasm` with clang for `wasm32` and copies it to `docs/hydra.wasm` for the web page.
 * **`make webserver`:** serves `docs/` on http://127.0.0.1:8080/ with Python's `http.server`. Open it to run the tests and examples in the browser.
 * **`make check`:** runs the native tests in `tests/` and round trips through the command line tool:
   ```
-  temp/hydra encode BLEN DFLAG MESSAGE PREFIX
+  temp/hydra encode BLEN DFLAG MESSAGE PREFIX [HEIGHT]
   temp/hydra decode MESSAGE BLOCK...
   ```
-  `encode` writes the $N$ blocks to `PREFIX000`, `PREFIX001` and so on. `decode` skips damaged, foreign and duplicate blocks and writes the decoded message, padding included.
+  `encode` plans as described above, unless `HEIGHT` is given, and writes the $N$ blocks to `PREFIX00000`, `PREFIX00001` and so on, each only as long as `block_length` says. `decode` skips damaged, foreign and duplicate blocks and writes the decoded message, padding included.

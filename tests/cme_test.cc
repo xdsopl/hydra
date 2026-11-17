@@ -9,14 +9,14 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #include <string.h>
 
 #define NMAX 256
-#define VALUES_MAX ((31 + MLEN_MAX * 8 + 30) / 31)
+#define VALUES_MAX ((31 + CAPACITY_MAX * 8 + 30) / 31)
 
-static unsigned char message[MLEN_MAX];
-static unsigned char output[MLEN_MAX];
+static unsigned char message[CAPACITY_MAX];
+static unsigned char output[CAPACITY_MAX];
 static unsigned char blocks[BLEN_MAX*NMAX];
 static unsigned char unpacked[BLEN_MAX];
 static unsigned char chosen[BLEN_MAX*NMAX];
-static unsigned char indices[NMAX];
+static int indices[NMAX];
 static M31 received[VALUES_MAX];
 static M31 data[VALUES_MAX];
 static int idents[K_MAX];
@@ -110,7 +110,7 @@ static void rejections()
 	check(cme_encode_message(blocks, message, K, N, capacity + 1, blen, blen) == -1, "message larger than K blocks is rejected", K, N, capacity + 1, blen);
 	check(cme_encode_message(blocks, message, K, N, 0, blen, blen) == -1, "mlen 0 is rejected", K, N, 0, blen);
 	check(cme_prepare_message(message, K_MAX + 1, 1, blen) == -1, "K above K_MAX is rejected", K_MAX + 1, N, 1, blen);
-	check(cme_prepare_message(message, K_MAX, 1, BLEN_MAX) == -1, "capacity above MLEN_MAX is rejected", K_MAX, N, 1, BLEN_MAX);
+	check(cme_prepare_message(message, K_MAX, 1, BLEN_MAX) == -1, "capacity above CAPACITY_MAX is rejected", K_MAX, N, 1, BLEN_MAX);
 	check(cme_prepare_message(message, 1, 1, 4) == -1, "message larger than capacity 0 is rejected", 1, N, 1, 4);
 	check(cme_encode_block(blocks, 0, 0, blen) == -1, "encode_block with K 0 is rejected", 0, N, 0, blen);
 	check(cme_encode_block(blocks, K_MAX + 1, 0, blen) == -1, "encode_block with K above K_MAX is rejected", K_MAX + 1, N, 0, blen);
@@ -123,7 +123,7 @@ static void rejections()
 	check(cme_decode_message(output, blocks, indices, 0, blen, blen) == -1, "decode with K 0 is rejected", 0, N, 0, blen);
 	check(cme_decode_message(output, blocks, indices, 1, 4, 4) == -1, "decode with capacity 0 is rejected", 1, N, 0, 4);
 	check(cme_decode_message(output, blocks, indices, K_MAX + 1, blen, blen) == -1, "decode with K above K_MAX is rejected", K_MAX + 1, N, 0, blen);
-	check(cme_decode_message(output, blocks, indices, K_MAX, BLEN_MAX, BLEN_MAX) == -1, "decode with capacity above MLEN_MAX is rejected", K_MAX, N, 0, BLEN_MAX);
+	check(cme_decode_message(output, blocks, indices, K_MAX, BLEN_MAX, BLEN_MAX) == -1, "decode with capacity above CAPACITY_MAX is rejected", K_MAX, N, 0, BLEN_MAX);
 	check(cme_decode_message(output, blocks, indices, K, 3, 3) == -1, "decode with blen below 4 is rejected", K, N, 0, 3);
 	check(cme_encode_message(blocks, message, K, N, capacity, blen, blen - 1) == -1, "stride below blen is rejected", K, N, capacity, blen);
 	check(cme_decode_message(output, blocks, indices, K, blen, blen - 1) == -1, "decode with stride below blen is rejected", K, N, 0, blen);
@@ -150,16 +150,8 @@ static void strided()
 
 static void decode_picked(int K, int mlen, int blen)
 {
-	int block_values = (blen * 8) / 31;
-	int block_bytes = (block_values * 31 + 7) / 8;
-	for (int j = 0; j < K; ++j) {
-		idents[j] = K + picked[j];
-		CODE::MersennePacking::pack(received+block_values*j, chosen+blen*j, block_values, block_bytes);
-	}
-	for (int i = 0; i < K; ++i)
-		cme.decode(data+block_values*i, received, idents, i, block_values, K);
 	memset(output, 0xA5, mlen);
-	CODE::MersennePacking::decode(output, data+1, mlen, data[0]);
+	check(!cme_decode_message(output, chosen, picked, K, blen, blen), "decode_message from picked indices", K, N_MAX, mlen, blen);
 }
 
 static void blocks_by_index()

@@ -10,6 +10,8 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 #define BLEN_MAX 8192
 #define HEIGHT_MAX 8
 #define BCNT_MAX (1 << HEIGHT_MAX)
+#define K_MAX 1024
+#define N_MAX (1 << 16)
 
 static inline int message_capacity(int K, int plen)
 {

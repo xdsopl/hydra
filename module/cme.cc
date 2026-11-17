@@ -17,32 +17,55 @@ static CODE::CauchyPrimeFieldErasureCoding<M31> cme;
 static M31 message_values[(31 + MLEN_MAX * 8 + 30) / 31];
 static M31 chunk_values[(BLEN_MAX * 8) / 31];
 static M31 received_values[(31 + MLEN_MAX * 8 + 30) / 31];
-static int block_ids[BCNT_MAX];
+static int block_ids[K_MAX];
 
 extern "C" {
+
+int cme_prepare_message(unsigned char *message, int K, int mlen, int blen)
+{
+	if (K < 1 || K > K_MAX)
+		return -1;
+	int block_values = (blen * 8) / 31;
+	if (block_values < 1)
+		return -1;
+	int capacity = message_capacity(K, blen);
+	if (capacity > MLEN_MAX)
+		return -1;
+	if (mlen < 1 || mlen > capacity)
+		return -1;
+	for (int i = mlen; i < capacity; ++i)
+		message[i] = 0;
+	message_values[0] = remap.encode(message_values+1, message, capacity);
+	return 0;
+}
+
+int cme_encode_block(unsigned char *block, int K, int index, int blen)
+{
+	if (K < 1 || K > K_MAX)
+		return -1;
+	if (index < 0 || index >= N_MAX)
+		return -1;
+	int block_values = (blen * 8) / 31;
+	if (block_values < 1)
+		return -1;
+	cme.encode(message_values, chunk_values, K + index, block_values, K);
+	CODE::MersennePacking::unpack(block, chunk_values, block_values, blen);
+	for (int j = (block_values * 31 + 7) / 8; j < blen; ++j)
+		block[j] = 0;
+	return 0;
+}
 
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen, int stride)
 {
 	if (stride < blen)
 		return -1;
-	if (mlen <= blen)
-		return -1;
 	if (K < 1 || N < K)
 		return -1;
-	int block_values = (blen * 8) / 31;
-	int capacity = message_capacity(K, blen);
-	if (mlen > capacity)
+	if (cme_prepare_message(message, K, mlen, blen))
 		return -1;
-	for (int i = mlen; i < capacity; ++i)
-		message[i] = 0;
-	message_values[0] = remap.encode(message_values+1, message, capacity);
-	for (int i = 0; i < N; ++i) {
-		int chunk_ident = K + i;
-		cme.encode(message_values, chunk_values, chunk_ident, block_values, K);
-		CODE::MersennePacking::unpack(blocks+i*stride, chunk_values, block_values, blen);
-		for (int j = (block_values * 31 + 7) / 8; j < blen; ++j)
-			blocks[i*stride+j] = 0;
-	}
+	for (int i = 0; i < N; ++i)
+		if (cme_encode_block(blocks+i*stride, K, i, blen))
+			return -1;
 	return 0;
 }
 
@@ -50,11 +73,13 @@ int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned c
 {
 	if (stride < blen)
 		return -1;
-	if (K < 1)
+	if (K < 1 || K > K_MAX)
 		return -1;
 	int block_values = (blen * 8) / 31;
+	if (block_values < 1)
+		return -1;
 	int capacity = message_capacity(K, blen);
-	if (capacity <= blen)
+	if (capacity < 1 || capacity > MLEN_MAX)
 		return -1;
 	int block_bits = block_values * 31;
 	int block_bytes = (block_bits + 7) / 8;

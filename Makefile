@@ -14,17 +14,11 @@ LDFLAGS = -nostdlib -Wl,--export-dynamic,--no-entry
 BLAKE2 = -Iblake2_ref
 CODE = -Icode_ref
 
-temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o temp/cme.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-.PHONY: assets
-assets: docs/hydra.wasm docs/hydra.wasm.gz
-
 docs/hydra.wasm: temp/hydra.wasm
 	install -m 644 $< $@
 
-docs/hydra.wasm.gz: temp/hydra.wasm
-	gzip -n -c $< > $@
+temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o temp/cme.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 .PHONY: webserver
 webserver:

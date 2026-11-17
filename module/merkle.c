@@ -22,21 +22,26 @@ int merkle_digest_message(unsigned char *digest, unsigned char *message, int mle
 	return 0;
 }
 
-int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen)
+int merkle_digest_leaf(unsigned char *hashes, unsigned char *leaf, int height, int llen, int dlen, int index)
 {
-	blake2s_state init, state;
+	blake2s_state state;
 	int leaves = 1 << height;
-	int woff = leaves - 1;
-	if (stride < blen)
-		return 1;
 	if (dlen < 1 || dlen > 32)
 		return 1;
-	blake2s_init_key(&init, dlen, &leaf_key, 1);
-	while (leaves--) {
-		state = init;
-		blake2s_update(&state, blocks+stride*leaves, blen);
-		blake2s_final(&state, hashes+dlen*(woff+leaves), dlen);
-	}
+	if (index < 0 || index >= leaves)
+		return 1;
+	blake2s_init_key(&state, dlen, &leaf_key, 1);
+	blake2s_update(&state, leaf, llen);
+	blake2s_final(&state, hashes+dlen*(leaves-1+index), dlen);
+	return 0;
+}
+
+int merkle_build_tree(unsigned char *hashes, int height, int dlen)
+{
+	blake2s_state init, state;
+	int woff = (1 << height) - 1;
+	if (dlen < 1 || dlen > 32)
+		return 1;
 	blake2s_init_key(&init, dlen, &node_key, 1);
 	while (height--) {
 		int nodes = 1 << height;
@@ -51,19 +56,15 @@ int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int heigh
 	return 0;
 }
 
-int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index)
+int merkle_copy_proof(unsigned char *proof, unsigned char *hashes, int height, int dlen, int index)
 {
-	unsigned char *proof;
 	int leaves = 1 << height;
 	int roff = leaves - 1;
 	int level = 0;
 	if (dlen < 1 || dlen > 32)
 		return 1;
-	if (stride < blen + dlen * (height + 1))
-		return 1;
 	if (index < 0 || index >= leaves)
 		return 1;
-	proof = blocks+stride*index+blen;
 	while (height) {
 		int sibling = index ^ 1;
 		index /= 2;
@@ -76,10 +77,9 @@ int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int heigh
 	return 0;
 }
 
-int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, int index)
+int merkle_verify_leaf(unsigned char *proof, unsigned char *leaf, int height, int llen, int dlen, int index)
 {
 	blake2s_state init, state;
-	unsigned char *proof = block+blen;
 	unsigned char hash[32];
 	int leaves = 1 << height;
 	int level = 0;
@@ -89,7 +89,7 @@ int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, in
 		return 1;
 	blake2s_init_key(&init, dlen, &leaf_key, 1);
 	state = init;
-	blake2s_update(&state, block, blen);
+	blake2s_update(&state, leaf, llen);
 	blake2s_final(&state, hash, dlen);
 	blake2s_init_key(&init, dlen, &node_key, 1);
 	while (height) {

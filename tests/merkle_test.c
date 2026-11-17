@@ -10,19 +10,21 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 #define MLEN_MAX 8192
 #define BLEN_MAX 8192
-#define HEIGHT_MAX 8
+#define HEIGHT_MAX 16
 #define BCNT_MAX (1 << HEIGHT_MAX)
 
 int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen);
-int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen);
-int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index);
-int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, int index);
+int merkle_digest_leaf(unsigned char *hashes, unsigned char *leaf, int height, int llen, int dlen, int index);
+int merkle_build_tree(unsigned char *hashes, int height, int dlen);
+int merkle_copy_proof(unsigned char *proof, unsigned char *hashes, int height, int dlen, int index);
+int merkle_verify_leaf(unsigned char *proof, unsigned char *leaf, int height, int llen, int dlen, int index);
 
 static unsigned char digest[32];
 static unsigned char message[MLEN_MAX];
-static unsigned char blocks[(BLEN_MAX+32*(HEIGHT_MAX+1))*BCNT_MAX];
+static unsigned char leaf[BLEN_MAX];
+static unsigned char other[BLEN_MAX];
+static unsigned char proof[32*(HEIGHT_MAX+1)];
 static unsigned char hashes[32*2*BCNT_MAX];
-static unsigned char saved[BLEN_MAX];
 static unsigned char level[2][32*BCNT_MAX];
 static int failures;
 static unsigned int seed = 1;
@@ -43,12 +45,18 @@ static void to_hex(char *str, unsigned char *buf, int len)
 	}
 }
 
-static void check(int ok, const char *what, int height, int blen, int dlen, int index)
+static void check(int ok, const char *what, int height, int llen, int dlen, int index)
 {
 	if (ok)
 		return;
-	printf("FAILED: %s (height %d, blen %d, dlen %d, index %d)\n", what, height, blen, dlen, index);
+	printf("FAILED: %s (height %d, llen %d, dlen %d, index %d)\n", what, height, llen, dlen, index);
 	++failures;
+}
+
+static void make_leaf(unsigned char *buf, int llen, int index)
+{
+	seed = 2654435761u * (index + 1) + llen;
+	fill(buf, llen);
 }
 
 static void hash(unsigned char *out, int dlen, unsigned char key, unsigned char *in, int len)
@@ -59,28 +67,12 @@ static void hash(unsigned char *out, int dlen, unsigned char key, unsigned char 
 	blake2s_final(&state, out, dlen);
 }
 
-static void reference_root(unsigned char *root, int height, int blen, int stride, int dlen)
-{
-	int cur = 0;
-	int nodes = 1 << height;
-	int i;
-	for (i = 0; i < nodes; ++i)
-		hash(level[cur]+dlen*i, dlen, 0, blocks+stride*i, blen);
-	while (nodes > 1) {
-		nodes /= 2;
-		for (i = 0; i < nodes; ++i)
-			hash(level[!cur]+dlen*i, dlen, 1, level[cur]+2*dlen*i, 2*dlen);
-		cur = !cur;
-	}
-	memcpy(root, level[cur], dlen);
-}
-
 static void known_answers(void)
 {
 	char str[65];
 	int i;
 	for (i = 0; i < 16; ++i)
-		blocks[i] = i;
+		leaf[i] = i;
 	memcpy(message, "abc", 3);
 	check(!merkle_digest_message(digest, message, 3, 32), "digest_message", 0, 0, 32, 0);
 	to_hex(str, digest, 32);
@@ -88,10 +80,14 @@ static void known_answers(void)
 	check(!merkle_digest_message(digest, message, 3, 16), "digest_message", 0, 0, 16, 0);
 	to_hex(str, digest, 16);
 	check(!strcmp(str, "aa4938119b1dc7b87cbad0ffd200d0ae"), "known digest of abc", 0, 3, 16, 0);
-	check(!merkle_digest_blocks(hashes, blocks, 2, 4, 4, 32), "digest_blocks", 2, 4, 32, 0);
+	for (i = 0; i < 4; ++i)
+		check(!merkle_digest_leaf(hashes, leaf+4*i, 2, 4, 32, i), "digest_leaf", 2, 4, 32, i);
+	check(!merkle_build_tree(hashes, 2, 32), "build_tree", 2, 4, 32, 0);
 	to_hex(str, hashes, 32);
 	check(!strcmp(str, "694db3ceb3276ec7e774521402a8ecdb1321d18b03907942a997f1c56fe6f6c2"), "known root", 2, 4, 32, 0);
-	check(!merkle_digest_blocks(hashes, blocks, 2, 4, 4, 16), "digest_blocks", 2, 4, 16, 0);
+	for (i = 0; i < 4; ++i)
+		check(!merkle_digest_leaf(hashes, leaf+4*i, 2, 4, 16, i), "digest_leaf", 2, 4, 16, i);
+	check(!merkle_build_tree(hashes, 2, 16), "build_tree", 2, 4, 16, 0);
 	to_hex(str, hashes, 16);
 	check(!strcmp(str, "0a9b5e981248f84051173de6ded79be7"), "known root", 2, 4, 16, 0);
 }
@@ -122,66 +118,82 @@ static void flip(unsigned char *buf, int len, int index)
 	buf[(index * 7) % len] ^= 1 << (index % 8);
 }
 
-static void test_tree(int height, int blen, int dlen)
+static void test_tree(int height, int llen, int dlen, int step)
 {
 	unsigned char root[32];
 	int leaves = 1 << height;
-	int stride = blen + dlen * (height + 1);
-	int index;
-	fill(blocks, stride * leaves);
-	check(!merkle_digest_blocks(hashes, blocks, height, blen, stride, dlen), "digest_blocks", height, blen, dlen, 0);
-	reference_root(root, height, blen, stride, dlen);
-	check(!memcmp(hashes, root, dlen), "root matches reference", height, blen, dlen, 0);
+	int cur = 0;
+	int nodes = leaves;
+	int index, i;
 	for (index = 0; index < leaves; ++index) {
-		unsigned char *block = blocks+stride*index;
-		unsigned char *proof = block+blen;
-		memcpy(saved, block, blen);
-		check(!merkle_extract_block(blocks, hashes, height, blen, stride, dlen, index), "extract_block", height, blen, dlen, index);
-		check(!memcmp(block, saved, blen), "extract_block keeps leaf", height, blen, dlen, index);
-		check(!memcmp(proof, hashes+dlen*(leaves-1+(index^1)), dlen), "proof starts with sibling", height, blen, dlen, index);
-		check(!memcmp(proof+dlen*height, root, dlen), "proof ends with root", height, blen, dlen, index);
-		check(!merkle_verify_block(block, height, blen, dlen, index), "verify_block", height, blen, dlen, index);
+		make_leaf(leaf, llen, index);
+		check(!merkle_digest_leaf(hashes, leaf, height, llen, dlen, index), "digest_leaf", height, llen, dlen, index);
+		hash(level[cur]+dlen*index, dlen, 0, leaf, llen);
+	}
+	check(!merkle_build_tree(hashes, height, dlen), "build_tree", height, llen, dlen, 0);
+	while (nodes > 1) {
+		nodes /= 2;
+		for (i = 0; i < nodes; ++i)
+			hash(level[!cur]+dlen*i, dlen, 1, level[cur]+2*dlen*i, 2*dlen);
+		cur = !cur;
+	}
+	memcpy(root, level[cur], dlen);
+	check(!memcmp(hashes, root, dlen), "root matches reference", height, llen, dlen, 0);
+	for (index = 0; index < leaves; index += step) {
+		make_leaf(leaf, llen, index);
+		check(!merkle_copy_proof(proof, hashes, height, dlen, index), "copy_proof", height, llen, dlen, index);
+		if (height)
+			check(!memcmp(proof, hashes+dlen*(leaves-1+(index^1)), dlen), "proof starts with sibling", height, llen, dlen, index);
+		check(!memcmp(proof+dlen*height, root, dlen), "proof ends with root", height, llen, dlen, index);
+		check(!merkle_verify_leaf(proof, leaf, height, llen, dlen, index), "verify_leaf", height, llen, dlen, index);
 		if (dlen < 16)
 			continue;
-		flip(block, blen, index);
-		check(merkle_verify_block(block, height, blen, dlen, index) == 1, "verify_block rejects corrupted leaf", height, blen, dlen, index);
-		flip(block, blen, index);
+		flip(leaf, llen, index);
+		check(merkle_verify_leaf(proof, leaf, height, llen, dlen, index) == 1, "verify_leaf rejects corrupted leaf", height, llen, dlen, index);
+		flip(leaf, llen, index);
 		flip(proof, dlen * (height + 1), index);
-		check(merkle_verify_block(block, height, blen, dlen, index) == 1, "verify_block rejects corrupted proof", height, blen, dlen, index);
+		check(merkle_verify_leaf(proof, leaf, height, llen, dlen, index) == 1, "verify_leaf rejects corrupted proof", height, llen, dlen, index);
 		flip(proof, dlen * (height + 1), index);
-		if (memcmp(block, blocks+stride*(index^1), blen))
-			check(merkle_verify_block(block, height, blen, dlen, index ^ 1) == 1, "verify_block rejects wrong index", height, blen, dlen, index);
-		check(!merkle_verify_block(block, height, blen, dlen, index), "verify_block after restoring", height, blen, dlen, index);
+		make_leaf(other, llen, index ^ 1);
+		if (height && memcmp(leaf, other, llen))
+			check(merkle_verify_leaf(proof, leaf, height, llen, dlen, index ^ 1) == 1, "verify_leaf rejects wrong index", height, llen, dlen, index);
+		check(!merkle_verify_leaf(proof, leaf, height, llen, dlen, index), "verify_leaf after restoring", height, llen, dlen, index);
 	}
-	check(merkle_extract_block(blocks, hashes, height, blen, stride - 1, dlen, 0) == 1, "extract_block rejects short stride", height, blen, dlen, 0);
-	check(merkle_extract_block(blocks, hashes, height, blen, stride, dlen, -1) == 1, "extract_block rejects index -1", height, blen, dlen, -1);
-	check(merkle_extract_block(blocks, hashes, height, blen, stride, dlen, leaves) == 1, "extract_block rejects index leaves", height, blen, dlen, leaves);
-	check(merkle_verify_block(blocks, height, blen, dlen, -1) == 1, "verify_block rejects index -1", height, blen, dlen, -1);
-	check(merkle_verify_block(blocks, height, blen, dlen, leaves) == 1, "verify_block rejects index leaves", height, blen, dlen, leaves);
+	check(merkle_digest_leaf(hashes, leaf, height, llen, dlen, -1) == 1, "digest_leaf rejects index -1", height, llen, dlen, -1);
+	check(merkle_digest_leaf(hashes, leaf, height, llen, dlen, leaves) == 1, "digest_leaf rejects index leaves", height, llen, dlen, leaves);
+	check(merkle_copy_proof(proof, hashes, height, dlen, -1) == 1, "copy_proof rejects index -1", height, llen, dlen, -1);
+	check(merkle_copy_proof(proof, hashes, height, dlen, leaves) == 1, "copy_proof rejects index leaves", height, llen, dlen, leaves);
+	check(merkle_verify_leaf(proof, leaf, height, llen, dlen, -1) == 1, "verify_leaf rejects index -1", height, llen, dlen, -1);
+	check(merkle_verify_leaf(proof, leaf, height, llen, dlen, leaves) == 1, "verify_leaf rejects index leaves", height, llen, dlen, leaves);
 }
 
 static void test_bad_dlen(void)
 {
-	check(merkle_digest_blocks(hashes, blocks, 2, 4, 4, 0) == 1, "digest_blocks rejects dlen 0", 2, 4, 0, 0);
-	check(merkle_digest_blocks(hashes, blocks, 2, 4, 4, 33) == 1, "digest_blocks rejects dlen 33", 2, 4, 33, 0);
-	check(merkle_extract_block(blocks, hashes, 2, 4, 4, 0, 0) == 1, "extract_block rejects dlen 0", 2, 4, 0, 0);
-	check(merkle_extract_block(blocks, hashes, 2, 4, 4, 33, 0) == 1, "extract_block rejects dlen 33", 2, 4, 33, 0);
-	check(merkle_verify_block(blocks, 2, 4, 0, 0) == 1, "verify_block rejects dlen 0", 2, 4, 0, 0);
-	check(merkle_verify_block(blocks, 2, 4, 33, 0) == 1, "verify_block rejects dlen 33", 2, 4, 33, 0);
+	check(merkle_digest_leaf(hashes, leaf, 2, 4, 0, 0) == 1, "digest_leaf rejects dlen 0", 2, 4, 0, 0);
+	check(merkle_digest_leaf(hashes, leaf, 2, 4, 33, 0) == 1, "digest_leaf rejects dlen 33", 2, 4, 33, 0);
+	check(merkle_build_tree(hashes, 2, 0) == 1, "build_tree rejects dlen 0", 2, 4, 0, 0);
+	check(merkle_build_tree(hashes, 2, 33) == 1, "build_tree rejects dlen 33", 2, 4, 33, 0);
+	check(merkle_copy_proof(proof, hashes, 2, 0, 0) == 1, "copy_proof rejects dlen 0", 2, 4, 0, 0);
+	check(merkle_copy_proof(proof, hashes, 2, 33, 0) == 1, "copy_proof rejects dlen 33", 2, 4, 33, 0);
+	check(merkle_verify_leaf(proof, leaf, 2, 4, 0, 0) == 1, "verify_leaf rejects dlen 0", 2, 4, 0, 0);
+	check(merkle_verify_leaf(proof, leaf, 2, 4, 33, 0) == 1, "verify_leaf rejects dlen 33", 2, 4, 33, 0);
 }
 
 int main(void)
 {
-	static const int heights[] = { 2, 3, 8 };
-	static const int blens[] = { 1, 64, 1000, BLEN_MAX };
+	static const int heights[] = { 0, 1, 2, 3, 8 };
+	static const int llens[] = { 1, 64, 1000, BLEN_MAX };
 	static const int dlens[] = { 1, 16, 32 };
 	int i, j, k;
 	known_answers();
 	test_digest_message();
 	for (i = 0; i < (int)(sizeof(heights) / sizeof(heights[0])); ++i)
-		for (j = 0; j < (int)(sizeof(blens) / sizeof(blens[0])); ++j)
+		for (j = 0; j < (int)(sizeof(llens) / sizeof(llens[0])); ++j)
 			for (k = 0; k < (int)(sizeof(dlens) / sizeof(dlens[0])); ++k)
-				test_tree(heights[i], blens[j], dlens[k]);
+				test_tree(heights[i], llens[j], dlens[k], 1);
+	for (j = 0; j < 2; ++j)
+		for (k = 0; k < (int)(sizeof(dlens) / sizeof(dlens[0])); ++k)
+			test_tree(HEIGHT_MAX, llens[j], dlens[k], 257);
 	test_bad_dlen();
 	if (failures) {
 		printf("merkle_test: %d failures\n", failures);

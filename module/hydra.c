@@ -101,9 +101,10 @@ int total_blocks(int K)
 }
 
 int merkle_digest_message(unsigned char *digest, unsigned char *message, int mlen, int dlen);
-int merkle_digest_blocks(unsigned char *hashes, unsigned char *blocks, int height, int blen, int stride, int dlen);
-int merkle_extract_block(unsigned char *blocks, unsigned char *hashes, int height, int blen, int stride, int dlen, int index);
-int merkle_verify_block(unsigned char *block, int height, int blen, int dlen, int index);
+int merkle_digest_leaf(unsigned char *hashes, unsigned char *leaf, int height, int llen, int dlen, int index);
+int merkle_build_tree(unsigned char *hashes, int height, int dlen);
+int merkle_copy_proof(unsigned char *proof, unsigned char *hashes, int height, int dlen, int index);
+int merkle_verify_leaf(unsigned char *proof, unsigned char *leaf, int height, int llen, int dlen, int index);
 int cme_encode_message(unsigned char *blocks, unsigned char *message, int K, int N, int mlen, int blen, int stride);
 int cme_decode_message(unsigned char *message, unsigned char *blocks, unsigned char *indices, int K, int blen, int stride);
 
@@ -165,7 +166,7 @@ int verify_block(int blen)
 	int plen = payload_length(height, blen, dlen);
 	if (plen < 0)
 		return -1;
-	if (merkle_verify_block(block, height, 2 + plen, dlen, block[1]))
+	if (merkle_verify_leaf(block+2+plen, block, height, 2 + plen, dlen, block[1]))
 		return -1;
 	return 0;
 }
@@ -194,10 +195,13 @@ int encode_message(int mlen, int blen, int dflag)
 		blocks[i*blen] = (K - 1) | (dflag ? 128 : 0);
 		blocks[i*blen+1] = i;
 	}
-	if (merkle_digest_blocks(hashes, blocks, height, 2 + plen, blen, dlen))
+	for (int i = 0; i < N; ++i)
+		if (merkle_digest_leaf(hashes, blocks+i*blen, height, 2 + plen, dlen, i))
+			return -1;
+	if (merkle_build_tree(hashes, height, dlen))
 		return -1;
 	for (int i = 0; i < N; ++i)
-		if (merkle_extract_block(blocks, hashes, height, 2 + plen, blen, dlen, i))
+		if (merkle_copy_proof(blocks+i*blen+2+plen, hashes, height, dlen, i))
 			return -1;
 	return N;
 }
@@ -228,7 +232,7 @@ int decode_message(int blen)
 		if (seen[indices[i]])
 			return -1;
 		seen[indices[i]] = 1;
-		if (merkle_verify_block(blocks+i*blen, height, 2 + plen, dlen, indices[i]))
+		if (merkle_verify_leaf(blocks+i*blen+2+plen, blocks+i*blen, height, 2 + plen, dlen, indices[i]))
 			return -1;
 		if (memcmp(blocks+i*blen+blen-dlen, blocks+blen-dlen, dlen))
 			return -1;

@@ -110,7 +110,7 @@ if (wasm.verify_block(blen) == 0) {
 
 ## 5. Building & Testing
 * **`make`:** builds `temp/hydra.wasm` with clang for `wasm32` and copies it to `docs/hydra.wasm` for the web page.
-* **`make webserver`:** serves `docs/` on port 8080. Open `index.html` to run the tests and examples in the browser.
+* **`make webserver`:** serves `docs/` on http://127.0.0.1:8080/ with Python's `http.server`. Open it to run the tests and examples in the browser.
 * **`make check`:** runs the native tests in `tests/` and round trips through the command line tool:
   ```
   temp/hydra encode BLEN DFLAG MESSAGE PREFIX

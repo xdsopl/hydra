@@ -22,7 +22,7 @@ temp/hydra.wasm: temp/string.o temp/blake2s-ref.o temp/hydra.o temp/merkle.o tem
 
 .PHONY: webserver
 webserver:
-	go run tools/webserver.go
+	python3 -m http.server 8080 --bind 127.0.0.1 --directory docs
 
 temp/blake2s-ref.o: blake2_ref/blake2s-ref.c blake2_ref/blake2.h blake2_ref/blake2-impl.h quirks/string.h
 	$(CC) $(CFLAGS) -std=c89 $(BLAKE2) -c -o $@ $<

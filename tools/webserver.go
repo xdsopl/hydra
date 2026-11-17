@@ -65,6 +65,6 @@ func (f *wasmHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.ListenAndServe(":8080", WebAssembly(http.Dir("assets")))
+	http.ListenAndServe(":8080", WebAssembly(http.Dir("docs")))
 }
 

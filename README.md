@@ -5,7 +5,7 @@
 ## 1. Overview & Objectives
 **HYDRA** is a decentralized, self-healing data storage and transmission protocol. It combines high-performance Mersenne Prime field arithmetic ($M31$), Cauchy-based erasure coding, and cryptographic Merkle proofs to ensure high availability and data integrity with minimal wire overhead.
 
-**Try it:** https://xdsopl.github.io/hydra/ runs the tests and examples in your browser.
+**Try it:** https://xdsopl.github.io/hydra/ runs the test suite in your browser: "Hello World!" examples, planning K and N, bad arguments, relaying, every single bit flip, lossy channels with several messages at once, and the timings.
 
 ---
 

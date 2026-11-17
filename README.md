@@ -61,7 +61,7 @@ All multi-byte fields are little-endian.
 The WebAssembly module exports a few fixed buffers and nine functions. All functions return `-1` on bad arguments or failure.
 
 ### Buffers
-* **`message`** ($2^{20} + 8192$ bytes): the message to encode, and the decoded message after `decode_message`. Messages are at most $2^{20}$ bytes; the decoder may fill up to one more block of padding.
+* **`message`** ($2^{23} + 8192$ bytes): the message to encode, and the decoded message after `decode_message`. Messages are at most $2^{23}$ bytes; the decoder may fill up to one more block of padding.
 * **`blocks`**: before `decode_message`, the caller puts $K$ blocks here, one after another.
 * **`block`** ($8192$ bytes): a single block, written by `encode_block` and read by `verify_block`.
 * **`digest`** ($32$ bytes): the result of `digest_message`.
@@ -94,7 +94,7 @@ After `decode_message`, call `regenerate_tree()`. If it returns `0`, `encode_blo
 ```js
 const wasm = (await WebAssembly.instantiateStreaming(fetch("hydra.wasm"))).instance.exports;
 const memory = wasm.memory.buffer;
-const message = new Uint8Array(memory, wasm.message.value, (1 << 20) + 8192);
+const message = new Uint8Array(memory, wasm.message.value, (1 << 23) + 8192);
 const block = new Uint8Array(memory, wasm.block.value, 8192);
 const blocks = new Uint8Array(memory, wasm.blocks.value, 8192 * 2);
 
@@ -115,7 +115,7 @@ if (wasm.verify_block(blen) == 0) {
 
 ### Limits
 * **Block length:** $blen \le 8192$ bytes.
-* **Message length:** $1 \le mlen \le 2^{20}$ bytes, but $K \le 1024$ caps it further for short blocks. The largest message for some budgets, with the recommended $N$:
+* **Message length:** $1 \le mlen \le 2^{23}$ bytes, but $K \le 1024$ caps it further: 1024 blocks of 8192 bytes hold at most 8201852 bytes, with $N = 1024$ and 16-byte hashes. The largest message for some budgets, with the recommended $N$:
 
   | budget | dflag = 0 | dflag = 1 |
   |-------:|----------:|----------:|
@@ -123,9 +123,9 @@ if (wasm.verify_block(blen) == 0) {
   | 256 | 13884 ($K = 512$, $N = 8192$) | 112 ($K = 2$, $N = 32$) |
   | 512 | 273788 ($K = 1024$, $N = 16384$) | 29756 ($K = 512$, $N = 8192$) |
   | 1024 | 797564 ($K = 1024$, $N = 16384$) | 551548 ($K = 1024$, $N = 16384$) |
-  | 2048 | 1048576 ($K = 582$, $N = 16384$) | 1048576 ($K = 672$, $N = 16384$) |
-  | 4096 | 1048576 ($K = 272$, $N = 8192$) | 1048576 ($K = 288$, $N = 8192$) |
-  | 8192 | 1048576 ($K = 132$, $N = 4096$) | 1048576 ($K = 135$, $N = 4096$) |
+  | 2048 | 1845116 ($K = 1024$, $N = 16384$) | 1599100 ($K = 1024$, $N = 16384$) |
+  | 4096 | 3944188 ($K = 1024$, $N = 16384$) | 3698172 ($K = 1024$, $N = 16384$) |
+  | 8192 | 8138364 ($K = 1024$, $N = 16384$) | 7892348 ($K = 1024$, $N = 16384$) |
 
   With a smaller $N$ than recommended, larger messages fit; `needed_blocks` tells for any height.
 

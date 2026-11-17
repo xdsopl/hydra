@@ -262,6 +262,8 @@ static void test_bad_arguments(void)
 	check(needed_blocks(1000, 140, 4, 0) == -1, "needed_blocks rejects more than N blocks", 1000, 140, 4, 0);
 	check(needed_blocks(1000, 140, 5, 0) == 26, "needed_blocks accepts the same with a larger N", 1000, 140, 5, 0);
 	check(needed_blocks(MLEN_MAX, 1024, 16, 0) == -1, "needed_blocks rejects more than K_MAX blocks", MLEN_MAX, 1024, 16, 0);
+	check(needed_blocks(8201852, 8192, 10, 0) == K_MAX, "the largest message fills K_MAX blocks of BLEN_MAX", 8201852, 8192, 10, 0);
+	check(needed_blocks(8201853, 8192, 10, 0) == -1, "one byte more needs more than K_MAX blocks", 8201853, 8192, 10, 0);
 	check(block_length(0, 1, 4, 0) == -1, "block_length rejects mlen 0", 0, 0, 4, 0);
 	check(block_length(100, 0, 4, 0) == -1, "block_length rejects K 0", 100, 0, 4, 0);
 	check(block_length(100, K_MAX + 1, 16, 0) == -1, "block_length rejects K_MAX + 1", 100, 0, 16, 0);
@@ -474,7 +476,7 @@ int main(void)
 	test_round_trip(900, 300, 8, 1);
 	test_round_trip(5000, 512, 9, 1);
 	test_round_trip(100000, 1024, 12, 0);
-	test_round_trip(MLEN_MAX, 8192, 12, 0);
+	test_round_trip(8201852, 8192, 10, 0);
 	test_round_trip(7932, 252, 14, 0);
 	test_padding_bytes(3000, 6, 0);
 	test_padding_bytes(3000, 6, 1);

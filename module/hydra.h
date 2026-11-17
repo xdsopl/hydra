@@ -6,7 +6,7 @@ Copyright 2026 Ahmet Inan <xdsopl@gmail.com>
 
 #pragma once
 
-#define MLEN_MAX (1 << 20)
+#define MLEN_MAX (1 << 23)
 #define BLEN_MAX 8192
 #define CAPACITY_MAX (MLEN_MAX + BLEN_MAX)
 #define HEIGHT_MAX 16

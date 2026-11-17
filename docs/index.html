@@ -13,7 +13,7 @@ body { color: white; background-color: black; }
 </head>
 <body>
 <script>
-const MLEN_MAX = 1 << 20;
+const MLEN_MAX = 1 << 23;
 const BLEN_MAX = 8192;
 const CAPACITY_MAX = MLEN_MAX + BLEN_MAX;
 const K_MAX = 1024;
@@ -386,7 +386,7 @@ async function size_tests() {
 		for (const budget of [128, 256, 1024, 8192]) {
 			for (const dflag of [0, 1]) {
 				let line = "  budget = " + budget + ", dflag = " + dflag + ":";
-				for (const mlen of [1, 12, 100, 1000, 10000, 100000, MLEN_MAX]) {
+				for (const mlen of [1, 12, 100, 1000, 10000, 100000, 1 << 20, 8000000]) {
 					const p = plan(mlen, budget, dflag);
 					line += " " + mlen + " → " + (p ? p.K + " of " + p.N + " in " + p.blen : "too big") + ",";
 					if (p)
@@ -723,7 +723,7 @@ async function speed_tests() {
 	print_head("Speed");
 	const cases = [
 		["100 kB in blocks of 1 kB", 100000, 1024, 0, 0],
-		["the largest message in blocks of 8 kB", MLEN_MAX, 8192, 0, 0],
+		["1 MiB in blocks of 8 kB", 1 << 20, 8192, 0, 0],
 		["the largest K, " + K_MAX + " blocks of 8 values each", 7932, 252, 0, 14],
 	];
 	for (const [what, mlen, budget, dflag, height] of cases) {
